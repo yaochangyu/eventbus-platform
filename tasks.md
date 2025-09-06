@@ -20,26 +20,26 @@
         - *Details*: 建立 IQueueService 介面，使用 Channel<T> 或 ConcurrentQueue<T> 實作，支援基本隊列操作
         - *Requirements*: 基本功能 - 支援消息隊列處理，MVP 快速實現
 
-- [ ] 2. **資料庫層設計與實作 (InMemory)**
+- [x] 2. **資料庫層設計與實作 (InMemory)**
     - [x] 2.1. Entity Framework Core InMemory 模型設計
         - *Goal*: 設計 InMemory 資料庫和 EF Core 實體模型
         - *Details*: 建立 Event、Task、SchedulerTask、Subscription、ExecutionMetrics 等實體，使用 InMemory Provider
         - *Requirements*: 監控與追蹤 - 記錄任務啟動時間和結束時間，收集和儲存錯誤訊息
-    - [ ] 2.2. Repository 模式實作 (簡化版)
+    - [x] 2.2. Repository 模式實作 (簡化版)
         - *Goal*: 實作基本 Repository 提供資料存取服務
         - *Details*: 建立 EventRepository、TaskRepository、SchedulerTaskRepository、SubscriptionRepository，整合 Memory Cache
         - *Requirements*: 基本功能實現，MVP 快速開發
 
-- [ ] 3. **核心業務邏輯實作 - Handler 層 (MVP)**
+- [x] 3. **核心業務邏輯實作 - Handler 層 (MVP)**
     - [x] 3.1. EventHandler 實作
         - *Goal*: 實作基本事件發布和訂閱管理邏輯
         - *Details*: 實作 PublishEventAsync、訂閱者查詢、事件路由邏輯，使用 Result Pattern 錯誤處理
         - *Requirements*: 基本功能 - 實現 Event 消息類型，API 規格 - Pub API 支援 Event 發布
-    - [ ] 3.2. TaskHandler 實作
+    - [x] 3.2. TaskHandler 實作
         - *Goal*: 實作基本任務建立和管理邏輯
         - *Details*: 實作 CreateTaskAsync、任務狀態管理、基本重試機制
         - *Requirements*: 基本功能 - 實現 Task 消息類型，API 規格 - Pub API 支援 Task 建立
-    - [ ] 3.3. SchedulerHandler 實作 (簡化版)
+    - [x] 3.3. SchedulerHandler 實作 (簡化版)
         - *Goal*: 實作基本延遲任務調度邏輯
         - *Details*: 實作 CreateSchedulerTaskAsync、使用 Timer 實現延遲執行，暫不支援 Cron 表達式
         - *Requirements*: 基本功能 - 實現 Scheduler 延遲執行
@@ -49,11 +49,11 @@
         - *Goal*: 實作消息發布的 REST API
         - *Details*: 實作 PublishEventAsync、CreateTaskAsync、CreateSchedulerTaskAsync 端點，使用 Primary Constructor 注入
         - *Requirements*: API 規格 - Pub API 支援 Event 發布和 Task 建立
-    - [ ] 4.2. RegisterController 實作
+    - [x] 4.2. RegisterController 實作
         - *Goal*: 實作事件訂閱管理的 REST API
         - *Details*: 實作訂閱者註冊、取消訂閱、查詢訂閱狀態的端點
         - *Requirements*: 基本功能 - 提供 Register API 支援事件訂閱管理
-    - [ ] 4.3. CallbackController 實作
+    - [x] 4.3. CallbackController 實作
         - *Goal*: 實作任務執行結果回報的 REST API
         - *Details*: 實作執行結果接收、狀態更新、錯誤訊息記錄的端點
         - *Requirements*: 基本功能 - 提供 Callback API 支援狀態回報
@@ -63,11 +63,11 @@
         - *Goal*: 實作 .NET Queue 消息消費和處理邏輯
         - *Details*: 建立 EventConsumer、TaskConsumer、SchedulerConsumer，使用 Channel<T> 或 ConcurrentQueue<T>
         - *Requirements*: 基本功能 - 支援消息隊列處理
-    - [ ] 5.2. HTTP 回調處理器 (簡化版)
+    - [x] 5.2. HTTP 回調處理器 (簡化版)
         - *Goal*: 實作基本外部 API 回調的 HTTP 客戶端
         - *Details*: 建立 HttpCallbackService，支援基本 HTTP 方法、標頭處理、超時控制
         - *Requirements*: 配置管理 - Callback 配置
-    - [ ] 5.3. Timer 調度引擎
+    - [x] 5.3. Timer 調度引擎
         - *Goal*: 實作基於 Timer 的延遲任務調度機制
         - *Details*: 建立 TimerSchedulerService，使用 System.Threading.Timer 實現延遲執行
         - *Requirements*: 基本功能 - 實現 Scheduler 延遲執行
@@ -77,7 +77,7 @@
         - *Goal*: 實作基本任務執行時間和狀態指標收集
         - *Details*: 建立 ExecutionMetricsCollector，記錄開始時間、結束時間、執行狀態、錯誤訊息
         - *Requirements*: 監控與追蹤 - 記錄任務啟動時間和結束時間
-    - [ ] 6.2. 健康檢查端點
+    - [x] 6.2. 健康檢查端點
         - *Goal*: 實作基本健康檢查功能
         - *Details*: 實作 /health、/health/ready、/health/live 端點
         - *Requirements*: 可維護性需求 - 提供健康檢查端點

@@ -42,6 +42,15 @@ builder.Services.Configure<QueueOptions>(
 // Add Infrastructure services
 builder.Services.AddInfrastructure();
 
+// Add Repository services
+builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.IEventRepository, EventBus.Platform.WebAPI.Repositories.EventRepository>();
+builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ITaskRepository, EventBus.Platform.WebAPI.Repositories.TaskRepository>();
+builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ISchedulerTaskRepository, EventBus.Platform.WebAPI.Repositories.SchedulerTaskRepository>();
+builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ISubscriptionRepository, EventBus.Platform.WebAPI.Repositories.SubscriptionRepository>();
+
+// Add Handler services
+builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ISchedulerHandler, EventBus.Platform.WebAPI.Handlers.SchedulerHandler>();
+
 // Add Entity Framework with InMemory Database
 builder.Services.AddDbContext<EventBusDbContext>(options =>
     options.UseInMemoryDatabase("EventBusDb"));
