@@ -1,27 +1,27 @@
-# MQ Platform 集中管理平台 - MVP Task List
+# EventBus Platform 集中管理平台 - ASP.NET Core 9 MVP Task List
 
 ## MVP Implementation Tasks
 
-- [ ] 1. **基礎設施層建置 (MVP)**
-    - [ ] 1.1. 建立 MVP 專案結構
+- [x] 1. **基礎設施層建置 (MVP)**
+    - [x] 1.1. 建立 MVP 專案結構
         - *Goal*: 建立符合 Clean Architecture 的 MVP 專案結構和基礎配置
         - *Details*: 建立 EventBus.Infrastructure、EventBus.Platform.WebAPI 專案，配置 DI 容器、logging、InMemory Database
-        - *Requirements*: 相容性需求 - 支援 .NET 6.0+，可維護性需求 - 結構化日誌記錄
-    - [ ] 1.2. TraceContext 中介軟體 (簡化版)
+        - *Requirements*: 相容性需求 - 支援 .NET 9.0+，可維護性需求 - 結構化日誌記錄
+    - [x] 1.2. TraceContext 中介軟體 (簡化版)
         - *Goal*: 實作基本追蹤機制
         - *Details*: 建立簡化的 TraceContextMiddleware，提供 IContextGetter<TraceContext?> 服務，暫不實作 JWT 驗證
         - *Requirements*: 監控與追蹤 - 任務狀態查詢功能
-    - [ ] 1.3. Memory Cache 服務實作
+    - [x] 1.3. Memory Cache 服務實作
         - *Goal*: 實作 Memory Cache 快取策略
         - *Details*: 建立 ICacheProvider 介面，實作 MemoryCacheProvider，支援基本快取操作
         - *Requirements*: 效能需求 - API 回應時間優化
-    - [ ] 1.4. .NET Queue 抽象層
+    - [x] 1.4. .NET Queue 抽象層
         - *Goal*: 建立 .NET 內建 Queue 的抽象化介面和實作
         - *Details*: 建立 IQueueService 介面，使用 Channel<T> 或 ConcurrentQueue<T> 實作，支援基本隊列操作
         - *Requirements*: 基本功能 - 支援消息隊列處理，MVP 快速實現
 
 - [ ] 2. **資料庫層設計與實作 (InMemory)**
-    - [ ] 2.1. Entity Framework Core InMemory 模型設計
+    - [x] 2.1. Entity Framework Core InMemory 模型設計
         - *Goal*: 設計 InMemory 資料庫和 EF Core 實體模型
         - *Details*: 建立 Event、Task、SchedulerTask、Subscription、ExecutionMetrics 等實體，使用 InMemory Provider
         - *Requirements*: 監控與追蹤 - 記錄任務啟動時間和結束時間，收集和儲存錯誤訊息
@@ -31,7 +31,7 @@
         - *Requirements*: 基本功能實現，MVP 快速開發
 
 - [ ] 3. **核心業務邏輯實作 - Handler 層 (MVP)**
-    - [ ] 3.1. EventHandler 實作
+    - [x] 3.1. EventHandler 實作
         - *Goal*: 實作基本事件發布和訂閱管理邏輯
         - *Details*: 實作 PublishEventAsync、訂閱者查詢、事件路由邏輯，使用 Result Pattern 錯誤處理
         - *Requirements*: 基本功能 - 實現 Event 消息類型，API 規格 - Pub API 支援 Event 發布
@@ -45,7 +45,7 @@
         - *Requirements*: 基本功能 - 實現 Scheduler 延遲執行
 
 - [ ] 4. **Web API 層實作 - Controller 層 (MVP)**
-    - [ ] 4.1. PubController 實作
+    - [x] 4.1. PubController 實作
         - *Goal*: 實作消息發布的 REST API
         - *Details*: 實作 PublishEventAsync、CreateTaskAsync、CreateSchedulerTaskAsync 端點，使用 Primary Constructor 注入
         - *Requirements*: API 規格 - Pub API 支援 Event 發布和 Task 建立
@@ -59,7 +59,7 @@
         - *Requirements*: 基本功能 - 提供 Callback API 支援狀態回報
 
 - [ ] 5. **消息處理引擎實作 (MVP)**
-    - [ ] 5.1. 隊列消費者實作
+    - [x] 5.1. 隊列消費者實作
         - *Goal*: 實作 .NET Queue 消息消費和處理邏輯
         - *Details*: 建立 EventConsumer、TaskConsumer、SchedulerConsumer，使用 Channel<T> 或 ConcurrentQueue<T>
         - *Requirements*: 基本功能 - 支援消息隊列處理
@@ -73,7 +73,7 @@
         - *Requirements*: 基本功能 - 實現 Scheduler 延遲執行
 
 - [ ] 6. **基本監控實作 (MVP)**
-    - [ ] 6.1. 執行指標收集器 (簡化版)
+    - [x] 6.1. 執行指標收集器 (簡化版)
         - *Goal*: 實作基本任務執行時間和狀態指標收集
         - *Details*: 建立 ExecutionMetricsCollector，記錄開始時間、結束時間、執行狀態、錯誤訊息
         - *Requirements*: 監控與追蹤 - 記錄任務啟動時間和結束時間
@@ -83,13 +83,13 @@
         - *Requirements*: 可維護性需求 - 提供健康檢查端點
 
 - [ ] 7. **基本錯誤處理 (MVP)**
-    - [ ] 7.1. 全域錯誤處理中介軟體 (簡化版)
+    - [x] 7.1. 全域錯誤處理中介軟體 (簡化版)
         - *Goal*: 實作統一的錯誤處理和回應機制
         - *Details*: 建立 ExceptionHandlingMiddleware，使用 Result Pattern，統一錯誤回應格式
         - *Requirements*: API 規格 - 所有 API 提供適當的錯誤處理和狀態碼
 
 - [ ] 8. **基本測試實作 (MVP)**
-    - [ ] 8.1. 核心功能單元測試
+    - [x] 8.1. 核心功能單元測試
         - *Goal*: 為核心 Handler 建立基本單元測試
         - *Details*: 使用 xUnit + FluentAssertions，測試主要業務邏輯流程
         - *Requirements*: 基本功能驗證
