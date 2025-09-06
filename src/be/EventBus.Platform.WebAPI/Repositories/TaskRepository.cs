@@ -5,7 +5,8 @@ using EventBus.Platform.WebAPI.Models;
 
 namespace EventBus.Platform.WebAPI.Repositories;
 
-public class TaskRepository(
+public class 
+    TaskRepository(
     ICacheService cacheService,
     IContextGetter<TraceContext?> traceContextGetter,
     ILogger<TaskRepository> logger) : ITaskRepository

@@ -27,6 +27,9 @@ public record TaskEntity
     public DateTime? CompletedAt { get; init; }
     public int RetryCount { get; init; } = 0;
     public string? ErrorMessage { get; init; }
+    
+    // TODO(human): 根據設計文檔加入 TaskRequest 缺少的欄位
+    // Method, RequestPayload, Headers, MaxRetries, TimeoutSeconds, TraceId
 }
 
 public record SchedulerTaskEntity

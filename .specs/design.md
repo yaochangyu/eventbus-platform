@@ -58,7 +58,6 @@ graph TB
     SH --> QUEUE
 
     EH --> CACHE
-    TH --> CACHE
     SH --> CACHE
     MON --> CACHE
 
@@ -146,9 +145,11 @@ src/
     │   │   └── CallbackController.cs       # 回調 API
     │   ├── Handlers/                        # 業務處理器
     │   │   ├── EventHandler.cs             # 事件處理
-    │   │   ├── TaskHandler.cs              # 任務處理
     │   │   ├── SchedulerHandler.cs         # 調度處理
     │   │   └── QueueHandler.cs             # 隊列管理
+    │   ├── Services/                        # 背景服務
+    │   │   ├── TaskWorkerService.cs        # Task 背景執行服務
+    │   │   └── MessageDispatcherService.cs # 消息派發服務
     │   ├── Repositories/                    # 資料存取
     │   │   ├── EventRepository.cs
     │   │   ├── TaskRepository.cs
@@ -171,8 +172,8 @@ src/
 [Route("api/[controller]")]
 public class PubControllerImpl(
     EventHandler eventHandler,
-    TaskHandler taskHandler,
     SchedulerHandler schedulerHandler,
+    IQueueService queueService,
     ILogger<PubControllerImpl> logger) : ControllerBase, IPubController
 {
     public async Task<IActionResult> PublishEventAsync(
@@ -182,6 +183,17 @@ public class PubControllerImpl(
         var result = await eventHandler.PublishEventAsync(request, cancellationToken)
             .ConfigureAwait(false);
         return result.ToApiResult();
+    }
+
+    public async Task<IActionResult> CreateTaskAsync(
+        TaskRequest request, 
+        CancellationToken cancellationToken = default)
+    {
+        // 直接將任務放入隊列，由背景服務處理
+        var taskId = Guid.NewGuid().ToString();
+        await queueService.EnqueueTaskAsync(request with { TaskId = taskId }, cancellationToken);
+        
+        return Accepted(new { TaskId = taskId });
     }
 }
 ```
@@ -193,7 +205,7 @@ public class PubControllerImpl(
 public class EventHandler(
     EventRepository eventRepository,
     SubscriptionRepository subscriptionRepository,
-    IMessageBroker messageBroker,
+    IMessageDispatcher messageDispatcher,
     ICacheProvider cacheProvider,
     IContextGetter<TraceContext?> traceContextGetter,
     ILogger<EventHandler> logger)
@@ -207,7 +219,33 @@ public class EventHandler(
 }
 ```
 
-#### 3. Repository 層 (Data Access)
+#### 3. 背景服務層 (Background Services)
+處理長時間執行的任務和消息處理
+
+```csharp
+public class MessageDispatcherService : BackgroundService
+{
+    private readonly IQueueService _queueService;
+    private readonly TaskRepository _taskRepository;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            // 從隊列取出任務並存入資料庫
+            var taskRequest = await _queueService.DequeueTaskAsync(stoppingToken);
+            if (taskRequest != null)
+            {
+                await _taskRepository.CreateTaskAsync(taskRequest, stoppingToken);
+            }
+            
+            await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+        }
+    }
+}
+```
+
+#### 4. Repository 層 (Data Access)
 資料持久化、查詢優化、快取整合
 
 ```csharp
@@ -227,7 +265,130 @@ public class EventRepository(
 
 ## 核心功能設計
 
-### 1. Event 發布與訂閱機制
+### 1. Task 處理機制
+
+#### 立即執行 Task
+```csharp
+public record TaskRequest
+{
+    public string CallbackUrl { get; init; }
+    public HttpMethod Method { get; init; } = HttpMethod.Post;
+    public object RequestPayload { get; init; }
+    public Dictionary<string, string> Headers { get; init; } = new();
+    public int MaxRetries { get; init; } = 3;
+    public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
+    public string? TraceId { get; init; }
+}
+```
+
+#### Task 執行流程
+```mermaid
+sequenceDiagram
+    participant Client as Client App
+    participant API as Pub API
+    participant Queue as Queue
+    participant Dispatcher as Dispatcher
+    participant DB as DB
+    participant Worker as Worker
+    participant External as Callback API
+
+    Note over Client,External: Task Creation & Queuing
+    Client->>API: POST /api/pub/tasks
+    API->>Queue: Enqueue Task Request
+    Queue-->>API: Task Queued
+    API-->>Client: 202 Accepted { TaskId }
+
+    Note over Queue,DB: Message Processing
+    Dispatcher->>Queue: Dequeue Task Request
+    Dispatcher->>DB: Store Task in InMemory DB
+    DB-->>Dispatcher: Task Stored (Status: Pending)
+
+    Note over Worker,External: Background Task Execution
+    loop Task Worker Polling (every 5 seconds)
+        Worker->>DB: Query Pending Tasks
+        DB-->>Worker: Pending Task List
+        alt Has Pending Tasks
+            Worker->>Worker: Select Task for Execution
+            Worker->>DB: Update Task Status (Processing)
+            Worker->>External: HTTP Callback
+            External-->>Worker: Response
+            alt Callback Success
+                Worker->>DB: Update Task Status (Completed)
+            else Callback Failed
+                Worker->>DB: Update Task Status (Failed/Retry)
+            end
+        end
+    end
+```
+
+#### Task Worker 背景服務設計
+```csharp
+public class TaskWorkerService : BackgroundService
+{
+    private readonly TaskRepository _taskRepository;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<TaskWorkerService> _logger;
+    private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(5);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                // 查詢待執行的任務
+                var pendingTasks = await _taskRepository
+                    .GetPendingTasksAsync(stoppingToken);
+
+                foreach (var task in pendingTasks)
+                {
+                    await ProcessTaskAsync(task, stoppingToken);
+                }
+
+                await Task.Delay(_pollingInterval, stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Task worker execution failed");
+                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            }
+        }
+    }
+
+    private async Task ProcessTaskAsync(TaskEntity task, CancellationToken cancellationToken)
+    {
+        // 更新任務狀態為處理中
+        await _taskRepository.UpdateTaskStatusAsync(
+            task.Id, MessageStatus.Processing, cancellationToken);
+
+        try
+        {
+            // 執行 HTTP 回調
+            using var httpClient = _httpClientFactory.CreateClient();
+            var response = await httpClient.PostAsync(
+                task.CallbackUrl, 
+                JsonContent.Create(task.RequestPayload),
+                cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                await _taskRepository.UpdateTaskStatusAsync(
+                    task.Id, MessageStatus.Completed, cancellationToken);
+            }
+            else
+            {
+                await HandleTaskFailure(task, "HTTP callback failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            await HandleTaskFailure(task, ex.Message);
+        }
+    }
+}
+```
+
+### 2. Event 發布與訂閱機制
 
 #### Event 發布流程（含 TraceContext）
 ```mermaid
@@ -238,7 +399,7 @@ sequenceDiagram
     participant TraceCtx as TraceContext
     participant Repo as Event Repository
     participant Cache as Cache Service
-    participant Broker as RabbitMQ
+    participant Dispatcher as RabbitMQ
     participant Sub as Subscriber
 
     Client->>API: POST /api/pub/events
@@ -249,8 +410,8 @@ sequenceDiagram
     Handler->>Cache: CacheEventMetadata(event)
     Repo-->>Handler: Event Created
     Cache-->>Handler: Event Cached
-    Handler->>Broker: Publish to Exchange (with TraceId)
-    Broker->>Sub: Route to Queues (preserve TraceId)
+    Handler->>Dispatcher: Publish to Exchange (with TraceId)
+    Dispatcher->>Sub: Route to Queues (preserve TraceId)
     Sub->>API: POST /api/callback (with TraceId)
     API-->>Client: 202 Accepted { EventId, TraceId }
 ```
@@ -267,48 +428,6 @@ public record SubscriptionConfig
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
     public bool IsActive { get; init; } = true;
 }
-```
-
-### 2. Task 處理機制
-
-#### 立即執行 Task
-```csharp
-public record TaskRequest
-{
-    public string CallbackUrl { get; init; }
-    public HttpMethod Method { get; init; } = HttpMethod.Post;
-    public object RequestPayload { get; init; }
-    public Dictionary<string, string> Headers { get; init; } = new();
-    public int MaxRetries { get; init; } = 3;
-    public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
-    public string? TraceId { get; init; }
-}
-```
-
-#### Task 執行流程（含 TraceContext）
-```mermaid
-sequenceDiagram
-    participant Client as Client App
-    participant API as Pub API
-    participant Handler as Task Handler
-    participant TraceCtx as TraceContext
-    participant Cache as Cache Service
-    participant Broker as RabbitMQ
-    participant Worker as Task Worker
-    participant External as External API
-
-    Client->>API: POST /api/pub/tasks
-    API->>TraceCtx: GetContext()
-    TraceCtx-->>API: TraceContext
-    API->>Handler: CreateTaskAsync(request, traceContext)
-    Handler->>Cache: CacheTaskMetadata(task)
-    Handler->>Broker: Enqueue Task (with TraceId)
-    Cache-->>Handler: Task Cached
-    Broker->>Worker: Deliver Task (preserve TraceId)
-    Worker->>External: HTTP Callback (with TraceId header)
-    External-->>Worker: Response
-    Worker->>API: POST /api/callback/result (with TraceId)
-    API-->>Client: 202 Accepted { TaskId, TraceId }
 ```
 
 ### 3. Scheduler 延遲執行

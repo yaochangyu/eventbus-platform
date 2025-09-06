@@ -1,7 +1,7 @@
 {
   "confirmed": {
     "requirements": true,
-    "design": false,
+    "design": true,
     "tasks": false
   },
   "skipped": {

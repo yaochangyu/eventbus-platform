@@ -21,10 +21,17 @@
         - *Requirements*: 基本功能 - 支援消息隊列處理，MVP 快速實現
 
 - [x] 2. **資料庫層設計與實作 (InMemory)**
-    - [x] 2.1. Entity Framework Core InMemory 模型設計
+    - [ ] 2.1. Entity Framework Core InMemory 模型設計 **[TaskEntity 模型不完整]**
         - *Goal*: 設計 InMemory 資料庫和 EF Core 實體模型
         - *Details*: 建立 Event、Task、SchedulerTask、Subscription、ExecutionMetrics 等實體，使用 InMemory Provider
         - *Requirements*: 監控與追蹤 - 記錄任務啟動時間和結束時間，收集和儲存錯誤訊息
+        - *Current Status*: ⚠️ TaskEntity 缺少關鍵欄位，符合度僅 14%
+        - *Missing Fields*: Method (HttpMethod), RequestPayload (object), Headers (Dictionary), MaxRetries (int), Timeout (TimeSpan), TraceId (string)
+    - [ ] 2.1.1. TaskRequest 和 TaskResponse 模型建立 **[新增任務]**
+        - *Goal*: 建立符合設計文檔的 Task 請求和回應模型
+        - *Details*: 建立 TaskRequest record，包含 CallbackUrl、Method、RequestPayload、Headers、MaxRetries、Timeout、TraceId 等欄位
+        - *Requirements*: API 規格 - 支援完整的 Task 處理機制
+        - *Priority*: 🔴 High - 必須在 TaskHandler 實作前完成
     - [x] 2.2. Repository 模式實作 (簡化版)
         - *Goal*: 實作基本 Repository 提供資料存取服務
         - *Details*: 建立 EventRepository、TaskRepository、SchedulerTaskRepository、SubscriptionRepository，整合 Memory Cache
@@ -35,20 +42,24 @@
         - *Goal*: 實作基本事件發布和訂閱管理邏輯
         - *Details*: 實作 PublishEventAsync、訂閱者查詢、事件路由邏輯，使用 Result Pattern 錯誤處理
         - *Requirements*: 基本功能 - 實現 Event 消息類型，API 規格 - Pub API 支援 Event 發布
-    - [x] 3.2. TaskHandler 實作
+    - [ ] 3.2. TaskHandler 實作 **[缺失 - 需重新實作]**
         - *Goal*: 實作基本任務建立和管理邏輯
-        - *Details*: 實作 CreateTaskAsync、任務狀態管理、基本重試機制
+        - *Details*: 實作 CreateTaskAsync、任務狀態管理、基本重試機制、HTTP 回調處理
         - *Requirements*: 基本功能 - 實現 Task 消息類型，API 規格 - Pub API 支援 Task 建立
+        - *Current Status*: ❌ TaskHandler 類別完全缺失，需要從頭實作
+        - *Missing Components*: ITaskHandler 介面、TaskHandler 實作類別、HTTP 回調邏輯
     - [x] 3.3. SchedulerHandler 實作 (簡化版)
         - *Goal*: 實作基本延遲任務調度邏輯
         - *Details*: 實作 CreateSchedulerTaskAsync、使用 Timer 實現延遲執行，暫不支援 Cron 表達式
         - *Requirements*: 基本功能 - 實現 Scheduler 延遲執行
 
 - [ ] 4. **Web API 層實作 - Controller 層 (MVP)**
-    - [x] 4.1. PubController 實作
+    - [ ] 4.1. PubController 實作 **[部分缺失 - Task API 未實作]**
         - *Goal*: 實作消息發布的 REST API
         - *Details*: 實作 PublishEventAsync、CreateTaskAsync、CreateSchedulerTaskAsync 端點，使用 Primary Constructor 注入
         - *Requirements*: API 規格 - Pub API 支援 Event 發布和 Task 建立
+        - *Current Status*: ⚠️ PubController 類別完全不存在，需要建立完整的控制器
+        - *Missing Components*: PubController 類別、/api/pub/tasks 端點、Task 處理邏輯整合
     - [x] 4.2. RegisterController 實作
         - *Goal*: 實作事件訂閱管理的 REST API
         - *Details*: 實作訂閱者註冊、取消訂閱、查詢訂閱狀態的端點
