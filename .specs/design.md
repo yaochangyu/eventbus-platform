@@ -229,24 +229,30 @@ public class EventRepository(
 
 ### 1. Event 發布與訂閱機制
 
-#### Event 發布流程
+#### Event 發布流程（含 TraceContext）
 ```mermaid
 sequenceDiagram
     participant Client as Client App
     participant API as Pub API
     participant Handler as Event Handler
+    participant TraceCtx as TraceContext
     participant Repo as Event Repository
+    participant Cache as Cache Service
     participant Broker as RabbitMQ
     participant Sub as Subscriber
 
     Client->>API: POST /api/pub/events
-    API->>Handler: PublishEventAsync()
-    Handler->>Repo: CreateEventAsync()
+    API->>TraceCtx: GetContext()
+    TraceCtx-->>API: TraceContext
+    API->>Handler: PublishEventAsync(request, traceContext)
+    Handler->>Repo: CreateEventAsync(event, traceId)
+    Handler->>Cache: CacheEventMetadata(event)
     Repo-->>Handler: Event Created
-    Handler->>Broker: Publish to Exchange
-    Broker->>Sub: Route to Queues
-    Sub->>API: POST /api/callback
-    API-->>Client: 202 Accepted
+    Cache-->>Handler: Event Cached
+    Handler->>Broker: Publish to Exchange (with TraceId)
+    Broker->>Sub: Route to Queues (preserve TraceId)
+    Sub->>API: POST /api/callback (with TraceId)
+    API-->>Client: 202 Accepted { EventId, TraceId }
 ```
 
 #### 訂閱管理
@@ -279,23 +285,30 @@ public record TaskRequest
 }
 ```
 
-#### Task 執行流程
+#### Task 執行流程（含 TraceContext）
 ```mermaid
 sequenceDiagram
     participant Client as Client App
     participant API as Pub API
     participant Handler as Task Handler
+    participant TraceCtx as TraceContext
+    participant Cache as Cache Service
     participant Broker as RabbitMQ
     participant Worker as Task Worker
     participant External as External API
 
     Client->>API: POST /api/pub/tasks
-    API->>Handler: CreateTaskAsync()
-    Handler->>Broker: Enqueue Task
-    Broker->>Worker: Deliver Task
-    Worker->>External: HTTP Callback
+    API->>TraceCtx: GetContext()
+    TraceCtx-->>API: TraceContext
+    API->>Handler: CreateTaskAsync(request, traceContext)
+    Handler->>Cache: CacheTaskMetadata(task)
+    Handler->>Broker: Enqueue Task (with TraceId)
+    Cache-->>Handler: Task Cached
+    Broker->>Worker: Deliver Task (preserve TraceId)
+    Worker->>External: HTTP Callback (with TraceId header)
     External-->>Worker: Response
-    Worker->>API: POST /api/callback/result
+    Worker->>API: POST /api/callback/result (with TraceId)
+    API-->>Client: 202 Accepted { TaskId, TraceId }
 ```
 
 ### 3. Scheduler 延遲執行
@@ -350,10 +363,137 @@ public record QueueConfig
 }
 ```
 
+#### 隊列操作流程
+```mermaid
+sequenceDiagram
+    participant Client as Client App
+    participant QueueAPI as Queue Controller
+    participant QueueSvc as Queue Service
+    participant TraceCtx as TraceContext
+    participant Cache as Cache Provider
+    participant Queue as In-Memory Queue
+
+    Client->>QueueAPI: POST /api/queue/{queueName}/enqueue
+    QueueAPI->>TraceCtx: GetContext()
+    TraceCtx-->>QueueAPI: TraceContext
+    QueueAPI->>QueueSvc: EnqueueAsync(item, queueName)
+    QueueSvc->>Queue: Add item to queue
+    QueueSvc->>Cache: Cache queue metadata
+    Queue-->>QueueSvc: Item enqueued
+    QueueSvc-->>QueueAPI: Success result
+    QueueAPI-->>Client: 200 OK { QueueCount, TraceId }
+```
+
+#### 快取管理流程
+```mermaid
+sequenceDiagram
+    participant Client as Client App
+    participant CacheAPI as Cache Controller
+    participant CacheSvc as Cache Service
+    participant TraceCtx as TraceContext
+    participant CacheProvider as Cache Provider
+
+    Note over Client,CacheProvider: Cache Get Operation
+    Client->>CacheAPI: GET /api/cache/{key}
+    CacheAPI->>TraceCtx: GetContext()
+    TraceCtx-->>CacheAPI: TraceContext
+    CacheAPI->>CacheSvc: GetAsync<object>(key)
+    CacheSvc->>CacheProvider: Retrieve from cache
+    CacheProvider-->>CacheSvc: Cached value or null
+    CacheSvc-->>CacheAPI: Retrieved value
+    CacheAPI-->>Client: 200 OK { Key, Value, Exists, TraceId }
+
+    Note over Client,CacheProvider: Cache Set Operation
+    Client->>CacheAPI: POST /api/cache/{key}
+    CacheAPI->>TraceCtx: GetContext()
+    TraceCtx-->>CacheAPI: TraceContext
+    CacheAPI->>CacheSvc: SetAsync(key, value, expiry)
+    CacheSvc->>CacheProvider: Store in cache
+    CacheProvider-->>CacheSvc: Success
+    CacheSvc-->>CacheAPI: Success result
+    CacheAPI-->>Client: 200 OK { Key, Cached, TraceId }
+```
+
 #### 動態隊列管理
 - 支援運行時建立、修改、刪除隊列
 - 自動配置 DLQ (Dead Letter Queue)
 - 支援優先級隊列和延遲隊列
+
+### 5. 健康檢查與監控機制
+
+#### 健康檢查流程
+```mermaid
+sequenceDiagram
+    participant Client as Monitoring System
+    participant HealthAPI as Health Controller
+    participant TraceCtx as TraceContext
+    participant Cache as Cache Service
+    participant Queue as Queue Service
+    participant DB as Database
+
+    Note over Client,DB: Basic Health Check
+    Client->>HealthAPI: GET /api/health
+    HealthAPI->>TraceCtx: GetContext()
+    TraceCtx-->>HealthAPI: TraceContext
+    HealthAPI-->>Client: 200 OK { Status, Version, TraceId }
+
+    Note over Client,DB: Readiness Check
+    Client->>HealthAPI: GET /api/health/ready
+    HealthAPI->>TraceCtx: GetContext()
+    HealthAPI->>Cache: Check cache availability
+    HealthAPI->>Queue: Check queue service
+    HealthAPI->>DB: Check database connection
+    Cache-->>HealthAPI: Cache status
+    Queue-->>HealthAPI: Queue status
+    DB-->>HealthAPI: DB status
+    HealthAPI-->>Client: 200 OK { Services status }
+
+    Note over Client,DB: Liveness Check
+    Client->>HealthAPI: GET /api/health/live
+    HealthAPI-->>Client: 200 OK { Basic liveness }
+```
+
+### 6. 完整的 Scheduler 調度流程
+
+#### Scheduler 任務創建與執行
+```mermaid
+sequenceDiagram
+    participant Client as Client App
+    participant SchedulerAPI as Scheduler Controller
+    participant SchedulerHandler as Scheduler Handler
+    participant TraceCtx as TraceContext
+    participant Repo as Scheduler Repository
+    participant Timer as Timer Service
+    participant Cache as Cache Service
+
+    Note over Client,Cache: Create Scheduled Task
+    Client->>SchedulerAPI: POST /api/scheduler/tasks
+    SchedulerAPI->>SchedulerHandler: CreateSchedulerTaskAsync(request)
+    SchedulerHandler->>TraceCtx: GetContext()
+    TraceCtx-->>SchedulerHandler: TraceContext
+    
+    alt Validation Success
+        SchedulerHandler->>Repo: SaveTaskAsync(schedulerTask)
+        Repo-->>SchedulerHandler: Task saved
+        SchedulerHandler->>Timer: ScheduleTask(taskId, scheduledAt)
+        SchedulerHandler->>Cache: CacheTaskMetadata(task)
+        Timer-->>SchedulerHandler: Timer scheduled
+        Cache-->>SchedulerHandler: Task cached
+        SchedulerHandler-->>SchedulerAPI: Success result
+        SchedulerAPI-->>Client: 201 Created { TaskId, ScheduledAt }
+    else Validation Failed
+        SchedulerHandler-->>SchedulerAPI: Validation error
+        SchedulerAPI-->>Client: 400 Bad Request
+    end
+
+    Note over Timer,Cache: Task Execution Time
+    Timer->>SchedulerHandler: Execute scheduled task
+    SchedulerHandler->>Repo: GetTaskAsync(taskId)
+    Repo-->>SchedulerHandler: Task details
+    SchedulerHandler->>SchedulerHandler: ExecuteTaskLogic()
+    SchedulerHandler->>Repo: UpdateTaskStatus(completed)
+    SchedulerHandler->>Cache: InvalidateCache(taskId)
+```
 
 ## 監控與 SLO 設計
 
