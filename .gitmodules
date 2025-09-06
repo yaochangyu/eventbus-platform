@@ -1,0 +1,3 @@
+[submodule ".specs/examples/api.template"]
+	path = .specs/examples/api.template
+	url = https://github.com/yaochangyu/api.template.git
