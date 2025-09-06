@@ -1,0 +1,1 @@
+- spec workflow 需求文檔放在 ./specs 資料夾下面
