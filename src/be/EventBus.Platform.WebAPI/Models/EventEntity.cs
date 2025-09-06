@@ -28,8 +28,13 @@ public record TaskEntity
     public int RetryCount { get; init; } = 0;
     public string? ErrorMessage { get; init; }
     
-    // TODO(human): 根據設計文檔加入 TaskRequest 缺少的欄位
-    // Method, RequestPayload, Headers, MaxRetries, TimeoutSeconds, TraceId
+    // TaskRequest fields based on design.md specification
+    public string Method { get; init; } = "POST";
+    public string RequestPayload { get; init; } = string.Empty;
+    public Dictionary<string, string>? Headers { get; init; }
+    public int MaxRetries { get; init; } = 3;
+    public int TimeoutSeconds { get; init; } = 30;
+    public string? TraceId { get; init; }
 }
 
 public record SchedulerTaskEntity

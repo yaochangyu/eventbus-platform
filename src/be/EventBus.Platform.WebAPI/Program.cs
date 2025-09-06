@@ -28,8 +28,9 @@ builder.Services.AddControllers()
 
 builder.Services.AddOpenApi();
 
-// Add HttpContextAccessor
+// Add HttpContextAccessor and HttpClient
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient();
 
 // Configure Cache Options
 builder.Services.Configure<CacheOptions>(
@@ -50,6 +51,10 @@ builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ISubscriptionRe
 
 // Add Handler services
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ISchedulerHandler, EventBus.Platform.WebAPI.Handlers.SchedulerHandler>();
+builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ITaskHandler, EventBus.Platform.WebAPI.Handlers.TaskHandler>();
+
+// Add Background services
+builder.Services.AddHostedService<EventBus.Platform.WebAPI.Services.TaskWorkerService>();
 
 // Add Entity Framework with InMemory Database
 builder.Services.AddDbContext<EventBusDbContext>(options =>
