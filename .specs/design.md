@@ -534,14 +534,20 @@ sequenceDiagram
         API-->>Client: 202 Accepted { TaskId, ScheduledAt }
     end
 
-    Note over Queue,DB: Message Processing (Dispatcher Console)
-    Dispatcher->>Queue: Dequeue Task Request
+    Note over API,DB: Message Processing (Dispatcher Console)
+    Dispatcher->>API: GET /api/queue/dequeue
+    API->>Queue: Dequeue Task Request
+    Queue-->>API: Task Request
+    API-->>Dispatcher: Task Request Response
     alt 立即執行任務
-        Dispatcher->>DB: Store Task (Status: Pending)
+        Dispatcher->>API: POST /api/tasks/store (Status: Pending)
+        API->>DB: Store Task (Status: Pending)
     else 延遲執行任務
-        Dispatcher->>DB: Store Task (Status: Scheduled)
+        Dispatcher->>API: POST /api/tasks/store (Status: Scheduled)
+        API->>DB: Store Task (Status: Scheduled)
     end
-    DB-->>Dispatcher: Task Stored
+    DB-->>API: Task Stored
+    API-->>Dispatcher: Task Stored Confirmation
 
     Note over Worker,External: Task Execution (TaskWorker Console)
     loop Task Worker Polling (every 5 seconds)
