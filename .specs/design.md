@@ -886,6 +886,8 @@ public record SubscriptionConfig
 ### 3. Scheduler 延遲執行
 
 #### 延遲任務設計
+延遲執行任務採用與立即執行任務相同的工作流程，差別在於任務建立時需要指定執行時間，並由 TaskWorker Console 實作延遲執行功能。
+
 ```csharp
 public record SchedulerTaskRequest : TaskRequest
 {
@@ -896,26 +898,55 @@ public record SchedulerTaskRequest : TaskRequest
 }
 ```
 
-#### 調度器實作
+#### 延遲任務執行流程
 ```mermaid
-graph TB
-    subgraph "Scheduler Engine"
-        TIMER[Timer Service]
-        QUEUE[Delayed Queue]
-        EXEC[Execution Service]
-    end
+sequenceDiagram
+    participant Client as Client App
+    participant API as Task Management API
+    participant Queue as Queue
+    participant Dispatcher as Dispatcher Console
+    participant DB as DB
+    participant Worker as TaskWorker Console
+    participant External as Callback API
 
-    subgraph "RabbitMQ"
-        DLX[Delayed Exchange]
-        TTL[TTL Queue]
-        WORK[Work Queue]
-    end
+    Note over Client,External: Scheduled Task Creation & Queuing
+    Client->>API: POST /api/scheduler/tasks (with ScheduledAt)
+    API->>Queue: Enqueue Scheduler Task Request
+    Queue-->>API: Task Queued
+    API-->>Client: 202 Accepted { TaskId, ScheduledAt }
 
-    TIMER --> QUEUE
-    QUEUE --> DLX
-    DLX --> TTL
-    TTL --> WORK
-    WORK --> EXEC
+    Note over Queue,DB: Message Processing (Dispatcher Console)
+    Dispatcher->>Queue: Dequeue Scheduler Task Request
+    Dispatcher->>DB: Store Task in InMemory DB (Status: Scheduled)
+    DB-->>Dispatcher: Task Stored with ScheduledAt
+
+    Note over Worker,External: Delayed Task Execution (TaskWorker Console)
+    loop Task Worker Polling with Delay Check (every 5 seconds)
+        Worker->>API: GET /api/tasks/scheduled (DateTime.UtcNow)
+        API->>DB: Query Tasks where ScheduledAt <= Now
+        DB-->>API: Ready-to-Execute Task List
+        API-->>Worker: Scheduled Tasks Response
+        alt Has Ready Tasks
+            Worker->>Worker: Select Task for Execution
+            Worker->>API: PUT /api/tasks/{taskId}/status (Processing)
+            API->>DB: Update Task Status
+            DB-->>API: Status Updated
+            API-->>Worker: Status Update Confirmed
+            Worker->>External: HTTP Callback (same as immediate tasks)
+            External-->>Worker: Response
+            alt Callback Success
+                Worker->>API: PUT /api/tasks/{taskId}/status (Completed)
+                API->>DB: Update Task Status
+                DB-->>API: Status Updated
+                API-->>Worker: Task Completed
+            else Callback Failed
+                Worker->>API: PUT /api/tasks/{taskId}/status (Failed/Retry)
+                API->>DB: Update Task Status with next retry time
+                DB-->>API: Status Updated
+                API-->>Worker: Task Failed (will retry at scheduled time)
+            end
+        end
+    end
 ```
 
 ### 4. Queue 管理機制
@@ -1025,46 +1056,217 @@ sequenceDiagram
     HealthAPI-->>Client: 200 OK { Basic liveness }
 ```
 
+#### TaskWorker Console 延遲執行實作
+
+```csharp
+// Enhanced TaskWorkerService.cs - 支援延遲執行
+public class TaskWorkerService : BackgroundService
+{
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<TaskWorkerService> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(5);
+    private readonly string _taskApiBaseUrl;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("TaskWorker started with delayed execution support - polling interval: {PollingInterval}s", 
+            _pollingInterval.TotalSeconds);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                // 查詢立即執行的待處理任務
+                var pendingTasks = await GetPendingTasksViaApiAsync(stoppingToken);
+                
+                // 查詢已到執行時間的延遲任務
+                var scheduledTasks = await GetScheduledTasksViaApiAsync(DateTime.UtcNow, stoppingToken);
+
+                var allTasks = new List<TaskResponse>();
+                if (pendingTasks?.Any() == true) allTasks.AddRange(pendingTasks);
+                if (scheduledTasks?.Any() == true) allTasks.AddRange(scheduledTasks);
+
+                if (allTasks.Any())
+                {
+                    _logger.LogDebug("Found {PendingCount} pending tasks and {ScheduledCount} scheduled tasks ready to execute", 
+                        pendingTasks?.Count ?? 0, scheduledTasks?.Count ?? 0);
+
+                    // 並發處理任務（限制並發數）
+                    var semaphore = new SemaphoreSlim(5, 5);
+                    var tasks = allTasks.Select(task => ProcessTaskViaApiAsync(task, semaphore, stoppingToken));
+                    
+                    await Task.WhenAll(tasks);
+                }
+
+                await Task.Delay(_pollingInterval, stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "TaskWorker execution failed");
+                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            }
+        }
+
+        _logger.LogInformation("TaskWorker stopped");
+    }
+
+    private async Task<List<TaskResponse>?> GetScheduledTasksViaApiAsync(DateTime currentTime, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.BaseAddress = new Uri(_taskApiBaseUrl);
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "TaskWorker/1.0");
+            
+            var response = await httpClient.GetFromJsonAsync<TaskApiResponse>(
+                $"/api/tasks/scheduled?currentTime={currentTime:yyyy-MM-ddTHH:mm:ss.fffZ}&limit=50", cancellationToken);
+                
+            return response?.Tasks;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve scheduled tasks via API");
+            return null;
+        }
+    }
+
+    private async Task HandleScheduledTaskFailureViaApiAsync(TaskResponse task, string errorMessage, CancellationToken cancellationToken)
+    {
+        var taskId = task.Id;
+        var currentRetryCount = task.RetryCount + 1;
+
+        if (currentRetryCount <= task.MaxRetries)
+        {
+            // 計算下次重試時間（延遲任務的重試也要考慮時間）
+            var nextRetryTime = task.ScheduledAt?.AddMinutes(currentRetryCount * 5) ?? DateTime.UtcNow.AddMinutes(currentRetryCount * 5);
+            var retryMessage = $"Retry {currentRetryCount}/{task.MaxRetries}: {errorMessage} (Next retry at: {nextRetryTime})";
+            
+            var success = await UpdateScheduledTaskStatusViaApiAsync(taskId, "Scheduled", retryMessage, nextRetryTime, cancellationToken);
+
+            if (success)
+            {
+                _logger.LogWarning("Scheduled task marked for retry: {TaskId} ({RetryCount}/{MaxRetries}) at {NextRetry} - TraceId: {TraceId}",
+                    taskId, currentRetryCount, task.MaxRetries, nextRetryTime, task.TraceId);
+            }
+        }
+        else
+        {
+            var failureMessage = $"Max retries exceeded: {errorMessage}";
+            var success = await UpdateTaskStatusViaApiAsync(taskId, "Failed", failureMessage, cancellationToken);
+
+            if (success)
+            {
+                _logger.LogError("Scheduled task failed permanently: {TaskId} after {MaxRetries} retries - TraceId: {TraceId}",
+                    taskId, task.MaxRetries, task.TraceId);
+            }
+        }
+    }
+
+    private async Task<bool> UpdateScheduledTaskStatusViaApiAsync(string taskId, string status, string? errorMessage, DateTime? nextScheduledAt, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.BaseAddress = new Uri(_taskApiBaseUrl);
+            
+            var request = new UpdateScheduledTaskStatusRequest
+            {
+                Status = status,
+                ErrorMessage = errorMessage,
+                NextScheduledAt = nextScheduledAt
+            };
+            
+            var response = await httpClient.PutAsJsonAsync(
+                $"/api/tasks/scheduled/{taskId}/status", request, cancellationToken);
+                
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update scheduled task status via API: {TaskId} -> {Status}", taskId, status);
+            return false;
+        }
+    }
+}
+
+// Supporting Models for Scheduled Tasks
+public class TaskResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public string CallbackUrl { get; set; } = string.Empty;
+    public string Method { get; set; } = "POST";
+    public string RequestPayload { get; set; } = string.Empty;
+    public Dictionary<string, string> Headers { get; set; } = new();
+    public int MaxRetries { get; set; } = 3;
+    public int RetryCount { get; set; } = 0;
+    public int TimeoutSeconds { get; set; } = 30;
+    public string? TraceId { get; set; }
+    
+    // Scheduled task properties
+    public DateTime? ScheduledAt { get; set; }
+    public bool IsRecurring { get; set; }
+    public string? CronExpression { get; set; }
+}
+
+public record UpdateScheduledTaskStatusRequest
+{
+    public string Status { get; init; } = string.Empty;
+    public string? ErrorMessage { get; init; }
+    public DateTime? NextScheduledAt { get; init; }
+}
+```
+
 ### 6. 完整的 Scheduler 調度流程
 
-#### Scheduler 任務創建與執行
-```mermaid
-sequenceDiagram
-    participant Client as Client App
-    participant SchedulerAPI as Scheduler Controller
-    participant SchedulerHandler as Scheduler Handler
-    participant TraceCtx as TraceContext
-    participant Repo as Scheduler Repository
-    participant Timer as Timer Service
-    participant Cache as Cache Service
+#### API 端點擴充支援
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+public class TaskManagementController : ControllerBase
+{
+    [HttpPost("scheduler/tasks")]
+    public async Task<IActionResult> CreateSchedulerTaskAsync(
+        SchedulerTaskRequest request, 
+        CancellationToken cancellationToken = default)
+    {
+        // 處理延遲任務建立邏輯
+        var scheduledAt = request.ScheduledAt ?? DateTime.UtcNow.Add(request.Delay ?? TimeSpan.Zero);
+        var taskId = Guid.NewGuid().ToString();
+        
+        var taskRequest = request with 
+        { 
+            TaskId = taskId,
+            ScheduledAt = scheduledAt 
+        };
+        
+        await queueService.EnqueueSchedulerTaskAsync(taskRequest, cancellationToken);
+        
+        return Accepted(new { TaskId = taskId, ScheduledAt = scheduledAt });
+    }
 
-    Note over Client,Cache: Create Scheduled Task
-    Client->>SchedulerAPI: POST /api/scheduler/tasks
-    SchedulerAPI->>SchedulerHandler: CreateSchedulerTaskAsync(request)
-    SchedulerHandler->>TraceCtx: GetContext()
-    TraceCtx-->>SchedulerHandler: TraceContext
-    
-    alt Validation Success
-        SchedulerHandler->>Repo: SaveTaskAsync(schedulerTask)
-        Repo-->>SchedulerHandler: Task saved
-        SchedulerHandler->>Timer: ScheduleTask(taskId, scheduledAt)
-        SchedulerHandler->>Cache: CacheTaskMetadata(task)
-        Timer-->>SchedulerHandler: Timer scheduled
-        Cache-->>SchedulerHandler: Task cached
-        SchedulerHandler-->>SchedulerAPI: Success result
-        SchedulerAPI-->>Client: 201 Created { TaskId, ScheduledAt }
-    else Validation Failed
-        SchedulerHandler-->>SchedulerAPI: Validation error
-        SchedulerAPI-->>Client: 400 Bad Request
-    end
+    [HttpGet("tasks/scheduled")]
+    public async Task<IActionResult> GetScheduledTasksAsync(
+        [FromQuery] DateTime currentTime,
+        [FromQuery] int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await taskHandler.GetScheduledTasksReadyForExecutionAsync(currentTime, limit, cancellationToken)
+            .ConfigureAwait(false);
+        return result.ToApiResult();
+    }
 
-    Note over Timer,Cache: Task Execution Time
-    Timer->>SchedulerHandler: Execute scheduled task
-    SchedulerHandler->>Repo: GetTaskAsync(taskId)
-    Repo-->>SchedulerHandler: Task details
-    SchedulerHandler->>SchedulerHandler: ExecuteTaskLogic()
-    SchedulerHandler->>Repo: UpdateTaskStatus(completed)
-    SchedulerHandler->>Cache: InvalidateCache(taskId)
+    [HttpPut("tasks/scheduled/{taskId}/status")]
+    public async Task<IActionResult> UpdateScheduledTaskStatusAsync(
+        string taskId,
+        [FromBody] UpdateScheduledTaskStatusRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await taskHandler.UpdateScheduledTaskStatusAsync(taskId, request, cancellationToken)
+            .ConfigureAwait(false);
+        return result.ToApiResult();
+    }
+}
 ```
 
 ## 監控與 SLO 設計
