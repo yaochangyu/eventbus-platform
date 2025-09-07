@@ -1,9 +1,8 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
-using EventBus.Platform.MessageDispatcher.Models;
+using EventBus.Platform.Dispatcher.Models;
 using Microsoft.Extensions.Logging;
 
-namespace EventBus.Platform.MessageDispatcher.Services;
+namespace EventBus.Platform.Dispatcher.Services;
 
 public class InMemoryQueueService(ILogger<InMemoryQueueService> logger) : IQueueService
 {

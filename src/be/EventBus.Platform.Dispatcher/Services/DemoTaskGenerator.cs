@@ -1,8 +1,8 @@
-using EventBus.Platform.MessageDispatcher.Models;
+using EventBus.Platform.Dispatcher.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace EventBus.Platform.MessageDispatcher.Services;
+namespace EventBus.Platform.Dispatcher.Services;
 
 public class DemoTaskGenerator(
     IQueueService queueService,

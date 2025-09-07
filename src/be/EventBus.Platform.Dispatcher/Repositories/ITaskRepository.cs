@@ -1,6 +1,6 @@
-using EventBus.Platform.MessageDispatcher.Models;
+using EventBus.Platform.Dispatcher.Models;
 
-namespace EventBus.Platform.MessageDispatcher.Repositories;
+namespace EventBus.Platform.Dispatcher.Repositories;
 
 public interface ITaskRepository
 {

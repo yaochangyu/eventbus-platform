@@ -1,4 +1,4 @@
-namespace EventBus.Platform.MessageDispatcher.Models;
+namespace EventBus.Platform.Dispatcher.Models;
 
 public record TaskRequest
 {

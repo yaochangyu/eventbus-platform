@@ -1,6 +1,6 @@
-using EventBus.Platform.MessageDispatcher.Models;
+using EventBus.Platform.Dispatcher.Models;
 
-namespace EventBus.Platform.MessageDispatcher.Services;
+namespace EventBus.Platform.Dispatcher.Services;
 
 public interface IQueueService
 {

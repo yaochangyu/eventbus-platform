@@ -7,7 +7,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBus.Infrastructure", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBus.Platform.WebAPI", "EventBus.Platform.WebAPI\EventBus.Platform.WebAPI.csproj", "{8D47F34F-8900-454A-9530-33EC90045C30}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBus.Platform.MessageDispatcher", "EventBus.Platform.MessageDispatcher\EventBus.Platform.MessageDispatcher.csproj", "{F8BBAB6E-8F3B-4C1A-85A5-110BE9CFCDFC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBus.Platform.Dispatcher", "EventBus.Platform.Dispatcher\EventBus.Platform.Dispatcher.csproj", "{F8BBAB6E-8F3B-4C1A-85A5-110BE9CFCDFC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBus.Platform.TaskWorker", "EventBus.Platform.TaskWorker\EventBus.Platform.TaskWorker.csproj", "{E536921A-9F15-4B7F-A5B4-1637B72A14A7}"
 EndProject

@@ -1,5 +1,5 @@
-using EventBus.Platform.MessageDispatcher.Repositories;
-using EventBus.Platform.MessageDispatcher.Services;
+﻿using EventBus.Platform.Dispatcher.Repositories;
+using EventBus.Platform.Dispatcher.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

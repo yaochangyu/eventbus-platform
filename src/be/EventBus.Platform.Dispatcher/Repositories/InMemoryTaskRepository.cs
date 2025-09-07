@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using EventBus.Platform.MessageDispatcher.Models;
+using EventBus.Platform.Dispatcher.Models;
 using Microsoft.Extensions.Logging;
 
-namespace EventBus.Platform.MessageDispatcher.Repositories;
+namespace EventBus.Platform.Dispatcher.Repositories;
 
 public class InMemoryTaskRepository(ILogger<InMemoryTaskRepository> logger) : ITaskRepository
 {

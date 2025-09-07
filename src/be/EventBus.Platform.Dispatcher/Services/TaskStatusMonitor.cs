@@ -1,8 +1,8 @@
-using EventBus.Platform.MessageDispatcher.Repositories;
+using EventBus.Platform.Dispatcher.Repositories;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace EventBus.Platform.MessageDispatcher.Services;
+namespace EventBus.Platform.Dispatcher.Services;
 
 public class TaskStatusMonitor(
     ITaskRepository taskRepository,
