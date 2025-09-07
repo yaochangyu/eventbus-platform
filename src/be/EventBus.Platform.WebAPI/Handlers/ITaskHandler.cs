@@ -32,6 +32,7 @@ public record CreateTaskRequest
 
 /// <summary>
 /// Response model for task operations
+/// Extended to include execution details for TaskWorkerService
 /// </summary>
 public record TaskResponse
 {
@@ -43,6 +44,16 @@ public record TaskResponse
     public int RetryCount { get; init; }
     public string? ErrorMessage { get; init; }
     public string? TraceId { get; init; }
+    
+    // Execution details needed by TaskWorkerService
+    public string CallbackUrl { get; init; } = string.Empty;
+    public string Method { get; init; } = "POST";
+    public string RequestPayload { get; init; } = string.Empty;
+    public Dictionary<string, string>? Headers { get; init; }
+    public int MaxRetries { get; init; } = 3;
+    public int TimeoutSeconds { get; init; } = 30;
+    public string? EventId { get; init; }
+    public string? SubscriberId { get; init; }
 }
 
 /// <summary>

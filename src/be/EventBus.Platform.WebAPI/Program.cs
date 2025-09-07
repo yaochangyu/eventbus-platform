@@ -53,8 +53,7 @@ builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ISubscriptionRe
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ISchedulerHandler, EventBus.Platform.WebAPI.Handlers.SchedulerHandler>();
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ITaskHandler, EventBus.Platform.WebAPI.Handlers.TaskHandler>();
 
-// Add Background services
-builder.Services.AddHostedService<EventBus.Platform.WebAPI.Services.TaskWorkerService>();
+// Note: TaskWorkerService has been moved to EventBus.Platform.TaskWorker Console Application
 
 // Add Entity Framework with InMemory Database
 builder.Services.AddDbContext<EventBusDbContext>(options =>

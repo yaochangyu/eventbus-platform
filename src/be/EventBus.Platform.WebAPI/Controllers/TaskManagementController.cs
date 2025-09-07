@@ -43,7 +43,16 @@ public class TaskManagementController(
                 CompletedAt = task.CompletedAt,
                 RetryCount = task.RetryCount,
                 ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId
+                TraceId = task.TraceId,
+                // Execution details for TaskWorkerService
+                CallbackUrl = task.CallbackUrl,
+                Method = task.Method,
+                RequestPayload = task.RequestPayload,
+                Headers = task.Headers,
+                MaxRetries = task.MaxRetries,
+                TimeoutSeconds = task.TimeoutSeconds,
+                EventId = task.EventId,
+                SubscriberId = task.SubscriberId
             }).ToList();
 
             logger.LogInformation("Retrieved {Count} pending tasks", responses.Count);
@@ -110,7 +119,16 @@ public class TaskManagementController(
                 CompletedAt = task.CompletedAt,
                 RetryCount = task.RetryCount,
                 ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId
+                TraceId = task.TraceId,
+                // Execution details for TaskWorkerService
+                CallbackUrl = task.CallbackUrl,
+                Method = task.Method,
+                RequestPayload = task.RequestPayload,
+                Headers = task.Headers,
+                MaxRetries = task.MaxRetries,
+                TimeoutSeconds = task.TimeoutSeconds,
+                EventId = task.EventId,
+                SubscriberId = task.SubscriberId
             };
 
             logger.LogInformation("Task status updated: {TaskId} -> {Status} - TraceId: {TraceId}", 
@@ -159,7 +177,16 @@ public class TaskManagementController(
                 CompletedAt = task.CompletedAt,
                 RetryCount = task.RetryCount,
                 ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId
+                TraceId = task.TraceId,
+                // Execution details for TaskWorkerService
+                CallbackUrl = task.CallbackUrl,
+                Method = task.Method,
+                RequestPayload = task.RequestPayload,
+                Headers = task.Headers,
+                MaxRetries = task.MaxRetries,
+                TimeoutSeconds = task.TimeoutSeconds,
+                EventId = task.EventId,
+                SubscriberId = task.SubscriberId
             };
 
             return Ok(response);
@@ -208,7 +235,16 @@ public class TaskManagementController(
                 CompletedAt = task.CompletedAt,
                 RetryCount = task.RetryCount,
                 ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId
+                TraceId = task.TraceId,
+                // Execution details for TaskWorkerService
+                CallbackUrl = task.CallbackUrl,
+                Method = task.Method,
+                RequestPayload = task.RequestPayload,
+                Headers = task.Headers,
+                MaxRetries = task.MaxRetries,
+                TimeoutSeconds = task.TimeoutSeconds,
+                EventId = task.EventId,
+                SubscriberId = task.SubscriberId
             };
 
             logger.LogInformation("Task stored successfully: {TaskId} - TraceId: {TraceId}", 

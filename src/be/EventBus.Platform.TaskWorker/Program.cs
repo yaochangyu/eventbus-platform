@@ -1,9 +1,8 @@
-using EventBus.Platform.MessageDispatcher.Repositories;
-using EventBus.Platform.MessageDispatcher.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using EventBus.Platform.TaskWorker.Services;
 
 var builder = Host.CreateDefaultBuilder(args);
 
@@ -20,21 +19,20 @@ builder.ConfigureServices((context, services) =>
     {
         logging.ClearProviders();
         logging.AddConsole();
-        logging.AddDebug();
         logging.SetMinimumLevel(LogLevel.Information);
     });
 
-    services.AddSingleton<IQueueService, InMemoryQueueService>();
-    services.AddSingleton<ITaskRepository, InMemoryTaskRepository>();
-    services.AddHostedService<MessageDispatcherService>();
-    // DemoTaskGenerator removed - use real task creation via API
-    // TaskStatusMonitor removed - TaskWorker Console handles task execution
+    // HTTP Client for API communication
+    services.AddHttpClient();
+    
+    // Task Worker Service
+    services.AddHostedService<TaskWorkerService>();
 });
 
 using var host = builder.Build();
 
 var logger = host.Services.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("EventBus Platform Message Dispatcher starting...");
+logger.LogInformation("TaskWorker Console Application starting...");
 
 try
 {
@@ -42,9 +40,9 @@ try
 }
 catch (Exception ex)
 {
-    logger.LogCritical(ex, "Application terminated unexpectedly");
+    logger.LogCritical(ex, "TaskWorker terminated unexpectedly");
 }
 finally
 {
-    logger.LogInformation("EventBus Platform Message Dispatcher stopped");
+    logger.LogInformation("TaskWorker Console Application stopped");
 }

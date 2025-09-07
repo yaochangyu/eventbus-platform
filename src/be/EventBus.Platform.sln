@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBus.Platform.WebAPI", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBus.Platform.MessageDispatcher", "EventBus.Platform.MessageDispatcher\EventBus.Platform.MessageDispatcher.csproj", "{F8BBAB6E-8F3B-4C1A-85A5-110BE9CFCDFC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBus.Platform.TaskWorker", "EventBus.Platform.TaskWorker\EventBus.Platform.TaskWorker.csproj", "{E536921A-9F15-4B7F-A5B4-1637B72A14A7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{F8BBAB6E-8F3B-4C1A-85A5-110BE9CFCDFC}.Release|x64.Build.0 = Release|Any CPU
 		{F8BBAB6E-8F3B-4C1A-85A5-110BE9CFCDFC}.Release|x86.ActiveCfg = Release|Any CPU
 		{F8BBAB6E-8F3B-4C1A-85A5-110BE9CFCDFC}.Release|x86.Build.0 = Release|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Debug|x64.Build.0 = Debug|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Debug|x86.Build.0 = Debug|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Release|x64.ActiveCfg = Release|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Release|x64.Build.0 = Release|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Release|x86.ActiveCfg = Release|Any CPU
+		{E536921A-9F15-4B7F-A5B4-1637B72A14A7}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

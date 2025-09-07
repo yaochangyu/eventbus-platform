@@ -36,6 +36,11 @@ graph TB
         TRACE[Trace Context]
     end
 
+    subgraph "Worker Console Applications"
+        DISPATCHER[Message Dispatcher Console]
+        TASKWORKER[TaskWorker Console]
+    end
+
     subgraph "External Services"
         EXT1[External API 1]
         EXT2[External API 2]
@@ -66,9 +71,13 @@ graph TB
     SH --> DB
     MON --> DB
 
-    QUEUE --> EXT1
-    QUEUE --> EXT2
-    QUEUE --> EXT3
+    DISPATCHER --> QUEUE
+    DISPATCHER --> TASK_API
+
+    TASKWORKER --> TASK_API
+    TASKWORKER --> EXT1
+    TASKWORKER --> EXT2
+    TASKWORKER --> EXT3
 
     SH --> TIMER
 ```
@@ -173,9 +182,11 @@ src/
 public class TaskManagementController(
     EventHandler eventHandler,
     SchedulerHandler schedulerHandler,
+    TaskHandler taskHandler,
     IQueueService queueService,
     ILogger<TaskManagementController> logger) : ControllerBase
 {
+    [HttpPost("events")]
     public async Task<IActionResult> PublishEventAsync(
         PublishEventRequest request, 
         CancellationToken cancellationToken = default)
@@ -185,6 +196,7 @@ public class TaskManagementController(
         return result.ToApiResult();
     }
 
+    [HttpPost("tasks")]
     public async Task<IActionResult> CreateTaskAsync(
         TaskRequest request, 
         CancellationToken cancellationToken = default)
@@ -195,6 +207,42 @@ public class TaskManagementController(
         
         return Accepted(new { TaskId = taskId });
     }
+
+    [HttpGet("tasks/pending")]
+    public async Task<IActionResult> GetPendingTasksAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await taskHandler.GetPendingTasksAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return result.ToApiResult();
+    }
+
+    [HttpPut("tasks/{taskId}/status")]
+    public async Task<IActionResult> UpdateTaskStatusAsync(
+        string taskId,
+        [FromBody] UpdateTaskStatusRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await taskHandler.UpdateTaskStatusAsync(taskId, request.Status, cancellationToken)
+            .ConfigureAwait(false);
+        return result.ToApiResult();
+    }
+
+    [HttpGet("tasks/{taskId}")]
+    public async Task<IActionResult> GetTaskAsync(
+        string taskId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await taskHandler.GetTaskAsync(taskId, cancellationToken)
+            .ConfigureAwait(false);
+        return result.ToApiResult();
+    }
+}
+
+public record UpdateTaskStatusRequest
+{
+    public MessageStatus Status { get; init; }
+    public string? ErrorMessage { get; init; }
 }
 ```
 
@@ -215,6 +263,141 @@ public class EventHandler(
         CancellationToken cancellationToken = default)
     {
         // 業務邏輯實作
+    }
+}
+
+public class TaskHandler(
+    TaskRepository taskRepository,
+    ICacheProvider cacheProvider,
+    IContextGetter<TraceContext?> traceContextGetter,
+    ILogger<TaskHandler> logger)
+{
+    public async Task<Result<List<TaskDto>, Failure>> GetPendingTasksAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var traceContext = traceContextGetter.GetContext();
+            logger.LogInformation("Getting pending tasks. TraceId: {TraceId}", traceContext?.TraceId);
+
+            // 先從快取查詢
+            var cacheKey = "pending_tasks";
+            var cachedTasks = await cacheProvider.GetAsync<List<TaskDto>>(cacheKey, cancellationToken);
+            
+            if (cachedTasks != null && cachedTasks.Count > 0)
+            {
+                logger.LogDebug("Found {Count} pending tasks in cache", cachedTasks.Count);
+                return Result.Success(cachedTasks);
+            }
+
+            // 從資料庫查詢
+            var tasks = await taskRepository.GetPendingTasksAsync(cancellationToken);
+            
+            if (tasks.IsSuccess)
+            {
+                var taskDtos = tasks.Value.Select(t => new TaskDto
+                {
+                    Id = t.Id,
+                    CallbackUrl = t.CallbackUrl,
+                    RequestPayload = t.RequestPayload,
+                    RetryCount = t.RetryCount,
+                    MaxRetries = t.MaxRetries,
+                    Headers = t.Headers
+                }).ToList();
+
+                // 快取結果（短時間）
+                await cacheProvider.SetAsync(cacheKey, taskDtos, TimeSpan.FromMinutes(1), cancellationToken);
+                
+                return Result.Success(taskDtos);
+            }
+
+            return Result.Failure<List<TaskDto>>(tasks.Error);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get pending tasks");
+            return Result.Failure<List<TaskDto>>(new Failure("TASK_QUERY_FAILED", ex.Message));
+        }
+    }
+
+    public async Task<Result<Unit, Failure>> UpdateTaskStatusAsync(
+        string taskId, 
+        MessageStatus status, 
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var traceContext = traceContextGetter.GetContext();
+            logger.LogInformation("Updating task {TaskId} status to {Status}. TraceId: {TraceId}", 
+                taskId, status, traceContext?.TraceId);
+
+            var result = await taskRepository.UpdateTaskStatusAsync(taskId, status, cancellationToken);
+            
+            if (result.IsSuccess)
+            {
+                // 清除相關快取
+                await cacheProvider.RemoveAsync("pending_tasks", cancellationToken);
+                await cacheProvider.RemoveAsync($"task_{taskId}", cancellationToken);
+                
+                logger.LogInformation("Task {TaskId} status updated successfully", taskId);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update task {TaskId} status", taskId);
+            return Result.Failure<Unit>(new Failure("TASK_UPDATE_FAILED", ex.Message));
+        }
+    }
+
+    public async Task<Result<TaskDto, Failure>> GetTaskAsync(
+        string taskId, 
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var traceContext = traceContextGetter.GetContext();
+            logger.LogInformation("Getting task {TaskId}. TraceId: {TraceId}", taskId, traceContext?.TraceId);
+
+            // 先從快取查詢
+            var cacheKey = $"task_{taskId}";
+            var cachedTask = await cacheProvider.GetAsync<TaskDto>(cacheKey, cancellationToken);
+            
+            if (cachedTask != null)
+            {
+                logger.LogDebug("Found task {TaskId} in cache", taskId);
+                return Result.Success(cachedTask);
+            }
+
+            // 從資料庫查詢
+            var task = await taskRepository.GetTaskAsync(taskId, cancellationToken);
+            
+            if (task.IsSuccess)
+            {
+                var taskDto = new TaskDto
+                {
+                    Id = task.Value.Id,
+                    CallbackUrl = task.Value.CallbackUrl,
+                    RequestPayload = task.Value.RequestPayload,
+                    RetryCount = task.Value.RetryCount,
+                    MaxRetries = task.Value.MaxRetries,
+                    Headers = task.Value.Headers
+                };
+
+                // 快取結果
+                await cacheProvider.SetAsync(cacheKey, taskDto, TimeSpan.FromMinutes(5), cancellationToken);
+                
+                return Result.Success(taskDto);
+            }
+
+            return Result.Failure<TaskDto>(task.Error);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get task {TaskId}", taskId);
+            return Result.Failure<TaskDto>(new Failure("TASK_GET_FAILED", ex.Message));
+        }
     }
 }
 ```
@@ -287,9 +470,9 @@ sequenceDiagram
     participant Client as Client App
     participant API as Task Management API
     participant Queue as Queue
-    participant Dispatcher as Dispatcher
+    participant Dispatcher as Dispatcher Console
     participant DB as DB
-    participant Worker as Worker
+    participant Worker as TaskWorker Console
     participant External as Callback API
 
     Note over Client,External: Task Creation & Queuing
@@ -298,93 +481,363 @@ sequenceDiagram
     Queue-->>API: Task Queued
     API-->>Client: 202 Accepted { TaskId }
 
-    Note over Queue,DB: Message Processing
+    Note over Queue,DB: Message Processing (Dispatcher Console)
     Dispatcher->>Queue: Dequeue Task Request
     Dispatcher->>DB: Store Task in InMemory DB
     DB-->>Dispatcher: Task Stored (Status: Pending)
 
-    Note over Worker,External: Background Task Execution
+    Note over Worker,External: Task Execution (TaskWorker Console)
     loop Task Worker Polling (every 5 seconds)
-        Worker->>DB: Query Pending Tasks
-        DB-->>Worker: Pending Task List
+        Worker->>API: GET /api/tasks/pending
+        API->>DB: Query Pending Tasks
+        DB-->>API: Pending Task List
+        API-->>Worker: Pending Tasks Response
         alt Has Pending Tasks
             Worker->>Worker: Select Task for Execution
-            Worker->>DB: Update Task Status (Processing)
+            Worker->>API: PUT /api/tasks/{taskId}/status (Processing)
+            API->>DB: Update Task Status
+            DB-->>API: Status Updated
+            API-->>Worker: Status Update Confirmed
             Worker->>External: HTTP Callback
             External-->>Worker: Response
             alt Callback Success
-                Worker->>DB: Update Task Status (Completed)
+                Worker->>API: PUT /api/tasks/{taskId}/status (Completed)
+                API->>DB: Update Task Status
+                DB-->>API: Status Updated
+                API-->>Worker: Task Completed
             else Callback Failed
-                Worker->>DB: Update Task Status (Failed/Retry)
+                Worker->>API: PUT /api/tasks/{taskId}/status (Failed/Retry)
+                API->>DB: Update Task Status
+                DB-->>API: Status Updated
+                API-->>Worker: Task Failed
             end
         end
     end
 ```
 
-#### Task Worker 背景服務設計
+#### TaskWorker Console 應用程式設計
+
 ```csharp
+// Program.cs - TaskWorker Console Application
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using TaskWorker.Services;
+
+var builder = Host.CreateDefaultBuilder(args);
+
+builder.ConfigureAppConfiguration((context, config) =>
+{
+    config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+    config.AddJsonFile($"appsettings.{context.HostingEnvironment.EnvironmentName}.json", optional: true);
+    config.AddEnvironmentVariables();
+});
+
+builder.ConfigureServices((context, services) =>
+{
+    services.AddLogging(logging =>
+    {
+        logging.ClearProviders();
+        logging.AddConsole();
+        logging.SetMinimumLevel(LogLevel.Information);
+    });
+
+    // HTTP Client for API communication
+    services.AddHttpClient();
+    
+    // Task Worker Service
+    services.AddHostedService<TaskWorkerService>();
+});
+
+using var host = builder.Build();
+
+var logger = host.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("TaskWorker Console Application starting...");
+
+try
+{
+    await host.RunAsync();
+}
+catch (Exception ex)
+{
+    logger.LogCritical(ex, "TaskWorker terminated unexpectedly");
+}
+finally
+{
+    logger.LogInformation("TaskWorker Console Application stopped");
+}
+
+// TaskWorkerService.cs - HTTP API based Task Worker
 public class TaskWorkerService : BackgroundService
 {
-    private readonly TaskRepository _taskRepository;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<TaskWorkerService> _logger;
+    private readonly IConfiguration _configuration;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(5);
+    private readonly string _taskApiBaseUrl;
+
+    public TaskWorkerService(
+        IHttpClientFactory httpClientFactory,
+        ILogger<TaskWorkerService> logger,
+        IConfiguration configuration)
+    {
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
+        _configuration = configuration;
+        _taskApiBaseUrl = configuration.GetValue<string>("TaskApi:BaseUrl") ?? "http://localhost:5000";
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("TaskWorker started - polling interval: {PollingInterval}s, API: {ApiUrl}", 
+            _pollingInterval.TotalSeconds, _taskApiBaseUrl);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                // 查詢待執行的任務
-                var pendingTasks = await _taskRepository
-                    .GetPendingTasksAsync(stoppingToken);
+                // 透過 HTTP API 查詢待執行的任務
+                var pendingTasks = await GetPendingTasksViaApiAsync(stoppingToken);
 
-                foreach (var task in pendingTasks)
+                if (pendingTasks?.Any() == true)
                 {
-                    await ProcessTaskAsync(task, stoppingToken);
+                    _logger.LogDebug("Found {TaskCount} pending tasks", pendingTasks.Count);
+
+                    // 並發處理任務（限制並發數）
+                    var semaphore = new SemaphoreSlim(5, 5);
+                    var tasks = pendingTasks.Select(task => ProcessTaskViaApiAsync(task, semaphore, stoppingToken));
+                    
+                    await Task.WhenAll(tasks);
                 }
 
                 await Task.Delay(_pollingInterval, stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Task worker execution failed");
+                _logger.LogError(ex, "TaskWorker execution failed");
                 await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
             }
         }
+
+        _logger.LogInformation("TaskWorker stopped");
     }
 
-    private async Task ProcessTaskAsync(TaskEntity task, CancellationToken cancellationToken)
+    private async Task<List<TaskResponse>?> GetPendingTasksViaApiAsync(CancellationToken cancellationToken)
     {
-        // 更新任務狀態為處理中
-        await _taskRepository.UpdateTaskStatusAsync(
-            task.Id, MessageStatus.Processing, cancellationToken);
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.BaseAddress = new Uri(_taskApiBaseUrl);
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "TaskWorker/1.0");
+            
+            var response = await httpClient.GetFromJsonAsync<TaskApiResponse>(
+                "/api/tasks/pending?limit=50", cancellationToken);
+                
+            return response?.Tasks;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve pending tasks via API");
+            return null;
+        }
+    }
+
+    private async Task ProcessTaskViaApiAsync(TaskResponse task, SemaphoreSlim semaphore, CancellationToken cancellationToken)
+    {
+        await semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await ExecuteTaskViaApiAsync(task, cancellationToken);
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+    }
+
+    private async Task ExecuteTaskViaApiAsync(TaskResponse task, CancellationToken cancellationToken)
+    {
+        var taskId = task.Id;
+        var startTime = DateTime.UtcNow;
+
+        _logger.LogInformation("Starting task execution: {TaskId}, CallbackUrl: {CallbackUrl} - TraceId: {TraceId}",
+            taskId, task.CallbackUrl, task.TraceId);
 
         try
         {
-            // 執行 HTTP 回調
-            using var httpClient = _httpClientFactory.CreateClient();
-            var response = await httpClient.PostAsync(
-                task.CallbackUrl, 
-                JsonContent.Create(task.RequestPayload),
-                cancellationToken);
-
-            if (response.IsSuccessStatusCode)
+            // 透過 API 更新任務狀態為處理中
+            var processingSuccess = await UpdateTaskStatusViaApiAsync(taskId, "Processing", null, cancellationToken);
+            if (!processingSuccess)
             {
-                await _taskRepository.UpdateTaskStatusAsync(
-                    task.Id, MessageStatus.Completed, cancellationToken);
+                _logger.LogError("Failed to update task status to Processing: {TaskId}", taskId);
+                return;
+            }
+
+            // 執行 HTTP 回調
+            var success = await ExecuteHttpCallbackAsync(task, cancellationToken);
+
+            if (success)
+            {
+                var completedSuccess = await UpdateTaskStatusViaApiAsync(taskId, "Completed", null, cancellationToken);
+                if (completedSuccess)
+                {
+                    var duration = DateTime.UtcNow - startTime;
+                    _logger.LogInformation("Task completed successfully: {TaskId} in {Duration}ms - TraceId: {TraceId}",
+                        taskId, duration.TotalMilliseconds, task.TraceId);
+                }
             }
             else
             {
-                await HandleTaskFailure(task, "HTTP callback failed");
+                await HandleTaskFailureViaApiAsync(task, "HTTP callback failed", cancellationToken);
             }
         }
         catch (Exception ex)
         {
-            await HandleTaskFailure(task, ex.Message);
+            _logger.LogError(ex, "Exception during task execution: {TaskId} - TraceId: {TraceId}",
+                taskId, task.TraceId);
+            
+            await HandleTaskFailureViaApiAsync(task, ex.Message, cancellationToken);
         }
     }
+
+    private async Task<bool> ExecuteHttpCallbackAsync(TaskResponse task, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(task.TimeoutSeconds);
+
+            var httpMethod = GetHttpMethod(task.Method);
+            using var request = new HttpRequestMessage(httpMethod, task.CallbackUrl);
+
+            // 添加自訂 Headers
+            if (task.Headers != null)
+            {
+                foreach (var header in task.Headers)
+                {
+                    request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
+            }
+
+            // 添加 TraceId Header
+            if (!string.IsNullOrWhiteSpace(task.TraceId))
+            {
+                request.Headers.TryAddWithoutValidation("X-Trace-Id", task.TraceId);
+            }
+
+            // 設定請求內容
+            if (httpMethod != HttpMethod.Get && !string.IsNullOrWhiteSpace(task.RequestPayload))
+            {
+                try
+                {
+                    var jsonElement = JsonSerializer.Deserialize<JsonElement>(task.RequestPayload);
+                    request.Content = JsonContent.Create(jsonElement);
+                }
+                catch (JsonException)
+                {
+                    request.Content = new StringContent(task.RequestPayload, Encoding.UTF8, "text/plain");
+                }
+            }
+
+            using var response = await httpClient.SendAsync(request, cancellationToken);
+            var isSuccess = response.IsSuccessStatusCode;
+
+            _logger.LogDebug("HTTP callback response: {TaskId} -> {StatusCode} - TraceId: {TraceId}",
+                task.Id, (int)response.StatusCode, task.TraceId);
+
+            return isSuccess;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HTTP callback execution failed: {TaskId} - TraceId: {TraceId}",
+                task.Id, task.TraceId);
+            return false;
+        }
+    }
+
+    private async Task<bool> UpdateTaskStatusViaApiAsync(string taskId, string status, string? errorMessage, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.BaseAddress = new Uri(_taskApiBaseUrl);
+            
+            var request = new UpdateTaskStatusRequest
+            {
+                Status = status,
+                ErrorMessage = errorMessage
+            };
+            
+            var response = await httpClient.PutAsJsonAsync(
+                $"/api/tasks/{taskId}/status", request, cancellationToken);
+                
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update task status via API: {TaskId} -> {Status}", taskId, status);
+            return false;
+        }
+    }
+
+    private async Task HandleTaskFailureViaApiAsync(TaskResponse task, string errorMessage, CancellationToken cancellationToken)
+    {
+        var taskId = task.Id;
+        var currentRetryCount = task.RetryCount + 1;
+
+        if (currentRetryCount <= task.MaxRetries)
+        {
+            var retryMessage = $"Retry {currentRetryCount}/{task.MaxRetries}: {errorMessage}";
+            var success = await UpdateTaskStatusViaApiAsync(taskId, "Pending", retryMessage, cancellationToken);
+
+            if (success)
+            {
+                _logger.LogWarning("Task marked for retry: {TaskId} ({RetryCount}/{MaxRetries}) - TraceId: {TraceId}",
+                    taskId, currentRetryCount, task.MaxRetries, task.TraceId);
+            }
+        }
+        else
+        {
+            var failureMessage = $"Max retries exceeded: {errorMessage}";
+            var success = await UpdateTaskStatusViaApiAsync(taskId, "Failed", failureMessage, cancellationToken);
+
+            if (success)
+            {
+                _logger.LogError("Task failed permanently: {TaskId} after {MaxRetries} retries - TraceId: {TraceId}",
+                    taskId, task.MaxRetries, task.TraceId);
+            }
+        }
+    }
+
+    private static HttpMethod GetHttpMethod(string method)
+    {
+        return method?.ToUpperInvariant() switch
+        {
+            "GET" => HttpMethod.Get,
+            "POST" => HttpMethod.Post,
+            "PUT" => HttpMethod.Put,
+            "DELETE" => HttpMethod.Delete,
+            "PATCH" => HttpMethod.Patch,
+            "HEAD" => HttpMethod.Head,
+            "OPTIONS" => HttpMethod.Options,
+            _ => HttpMethod.Post
+        };
+    }
+}
+
+// Supporting Models
+public class TaskApiResponse
+{
+    public List<TaskResponse> Tasks { get; set; } = new();
+    public int Count { get; set; }
+    public int Limit { get; set; }
+}
+
+public record UpdateTaskStatusRequest
+{
+    public string Status { get; init; } = string.Empty;
+    public string? ErrorMessage { get; init; }
 }
 ```
 
