@@ -40,6 +40,11 @@ public record TaskResponse
     public int TimeoutSeconds { get; init; } = 30;
     public string? EventId { get; init; }
     public string? SubscriberId { get; init; }
+    
+    // Scheduled execution properties
+    public DateTime? ScheduledAt { get; init; }
+    public bool IsRecurring { get; init; }
+    public string? CronExpression { get; init; }
 }
 
 /// <summary>
@@ -49,6 +54,16 @@ public record UpdateTaskStatusRequest
 {
     public string Status { get; init; } = string.Empty;
     public string? ErrorMessage { get; init; }
+}
+
+/// <summary>
+/// Request model for updating scheduled task status
+/// </summary>
+public record UpdateScheduledTaskStatusRequest
+{
+    public string Status { get; init; } = string.Empty;
+    public string? ErrorMessage { get; init; }
+    public DateTime? NextScheduledAt { get; init; }
 }
 
 /// <summary>
@@ -76,30 +91,34 @@ public class TaskWorkerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("TaskWorker started - polling interval: {PollingInterval}s, API: {ApiUrl}", 
+        _logger.LogInformation("TaskWorker started with unified execution support - polling interval: {PollingInterval}s, API: {ApiUrl}", 
             _pollingInterval.TotalSeconds, _taskApiBaseUrl);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                // 透過 HTTP API 查詢待執行的任務
-                var pendingTasks = await GetPendingTasksViaApiAsync(stoppingToken);
-                
-                if (pendingTasks == null)
-                {
-                    _logger.LogError("Failed to retrieve pending tasks from API");
-                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
-                    continue;
-                }
+                // 並發查詢立即執行和延遲執行的任務
+                var pendingTasksTask = GetPendingTasksViaApiAsync(stoppingToken);
+                var scheduledTasksTask = GetScheduledTasksViaApiAsync(DateTime.UtcNow, stoppingToken);
 
-                if (pendingTasks.Any())
+                await Task.WhenAll(pendingTasksTask, scheduledTasksTask);
+
+                var pendingTasks = await pendingTasksTask;
+                var scheduledTasks = await scheduledTasksTask;
+
+                var allTasks = new List<TaskResponse>();
+                if (pendingTasks?.Any() == true) allTasks.AddRange(pendingTasks);
+                if (scheduledTasks?.Any() == true) allTasks.AddRange(scheduledTasks);
+
+                if (allTasks.Any())
                 {
-                    _logger.LogDebug("Found {TaskCount} pending tasks", pendingTasks.Count);
+                    _logger.LogDebug("Found {PendingCount} pending tasks and {ScheduledCount} scheduled tasks ready to execute", 
+                        pendingTasks?.Count ?? 0, scheduledTasks?.Count ?? 0);
 
                     // 並發處理任務（限制並發數）
-                    var semaphore = new SemaphoreSlim(5, 5); // Max 5 concurrent executions
-                    var tasks = pendingTasks.Select(task => ProcessTaskViaApiAsync(task, semaphore, stoppingToken));
+                    var semaphore = new SemaphoreSlim(5, 5);
+                    var tasks = allTasks.Select(task => ProcessTaskViaApiAsync(task, semaphore, stoppingToken));
                     
                     await Task.WhenAll(tasks);
                 }
@@ -132,6 +151,26 @@ public class TaskWorkerService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to retrieve pending tasks via API");
+            return null;
+        }
+    }
+
+    private async Task<List<TaskResponse>?> GetScheduledTasksViaApiAsync(DateTime currentTime, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.BaseAddress = new Uri(_taskApiBaseUrl);
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "TaskWorker/1.0");
+            
+            var response = await httpClient.GetFromJsonAsync<TaskApiResponse>(
+                $"/api/tasks/scheduled?currentTime={currentTime:yyyy-MM-ddTHH:mm:ss.fffZ}&limit=50", cancellationToken);
+                
+            return response?.Tasks;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve scheduled tasks via API");
             return null;
         }
     }
@@ -301,22 +340,65 @@ public class TaskWorkerService : BackgroundService
             return false;
         }
     }
+
+    private async Task<bool> UpdateScheduledTaskStatusViaApiAsync(string taskId, string status, string? errorMessage, DateTime? nextScheduledAt, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.BaseAddress = new Uri(_taskApiBaseUrl);
+            
+            var request = new UpdateScheduledTaskStatusRequest
+            {
+                Status = status,
+                ErrorMessage = errorMessage,
+                NextScheduledAt = nextScheduledAt
+            };
+            
+            var response = await httpClient.PutAsJsonAsync(
+                $"/api/tasks/scheduled/{taskId}/status", request, cancellationToken);
+                
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update scheduled task status via API: {TaskId} -> {Status}", taskId, status);
+            return false;
+        }
+    }
     
     private async Task HandleTaskFailureViaApiAsync(TaskResponse task, string errorMessage, CancellationToken cancellationToken)
     {
         var taskId = task.Id;
-        var currentRetryCount = task.RetryCount + 1; // +1 because we're about to increment
+        var currentRetryCount = task.RetryCount + 1;
 
         if (currentRetryCount <= task.MaxRetries)
         {
-            // 標記為失敗但允許重試
             var retryMessage = $"Retry {currentRetryCount}/{task.MaxRetries}: {errorMessage}";
-            var success = await UpdateTaskStatusViaApiAsync(taskId, "Pending", retryMessage, cancellationToken);
-
-            if (success)
+            
+            // 處理延遲任務和立即任務的重試邏輯
+            if (task.ScheduledAt.HasValue)
             {
-                _logger.LogWarning("Task marked for retry: {TaskId} ({RetryCount}/{MaxRetries}) - TraceId: {TraceId}",
-                    taskId, currentRetryCount, task.MaxRetries, task.TraceId);
+                // 延遲任務重試：計算下次重試時間
+                var nextRetryTime = DateTime.UtcNow.AddMinutes(currentRetryCount * 5);
+                var success = await UpdateScheduledTaskStatusViaApiAsync(taskId, "Scheduled", retryMessage, nextRetryTime, cancellationToken);
+
+                if (success)
+                {
+                    _logger.LogWarning("Scheduled task marked for retry: {TaskId} ({RetryCount}/{MaxRetries}) at {NextRetry} - TraceId: {TraceId}",
+                        taskId, currentRetryCount, task.MaxRetries, nextRetryTime, task.TraceId);
+                }
+            }
+            else
+            {
+                // 立即任務重試：直接設為 Pending
+                var success = await UpdateTaskStatusViaApiAsync(taskId, "Pending", retryMessage, cancellationToken);
+
+                if (success)
+                {
+                    _logger.LogWarning("Task marked for retry: {TaskId} ({RetryCount}/{MaxRetries}) - TraceId: {TraceId}",
+                        taskId, currentRetryCount, task.MaxRetries, task.TraceId);
+                }
             }
         }
         else

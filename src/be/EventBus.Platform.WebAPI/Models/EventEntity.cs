@@ -21,12 +21,12 @@ public record TaskEntity
     public string EventId { get; init; } = string.Empty;
     public string SubscriberId { get; init; } = string.Empty;
     public string CallbackUrl { get; init; } = string.Empty;
-    public string Status { get; init; } = "Pending";
+    public string Status { get; set; } = "Pending";
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
-    public DateTime? StartedAt { get; init; }
-    public DateTime? CompletedAt { get; init; }
-    public int RetryCount { get; init; } = 0;
-    public string? ErrorMessage { get; init; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int RetryCount { get; set; } = 0;
+    public string? ErrorMessage { get; set; }
     
     // TaskRequest fields based on design.md specification
     public string Method { get; init; } = "POST";
@@ -35,6 +35,11 @@ public record TaskEntity
     public int MaxRetries { get; init; } = 3;
     public int TimeoutSeconds { get; init; } = 30;
     public string? TraceId { get; init; }
+    
+    // Scheduled execution properties
+    public DateTime? ScheduledAt { get; set; }
+    public bool IsRecurring { get; init; } = false;
+    public string? CronExpression { get; init; }
 }
 
 public record SchedulerTaskEntity

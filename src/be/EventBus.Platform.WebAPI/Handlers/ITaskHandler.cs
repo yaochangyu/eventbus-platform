@@ -11,11 +11,16 @@ public interface ITaskHandler
     Task<Result<List<TaskEntity>, Failure>> GetPendingTasksAsync(int limit = 100, CancellationToken cancellationToken = default);
     Task<Result<TaskEntity, Failure>> UpdateTaskStatusAsync(string id, string status, string? errorMessage = null, CancellationToken cancellationToken = default);
     Task<Result<bool, Failure>> ExecuteTaskAsync(string id, CancellationToken cancellationToken = default);
+    
+    // Scheduled task methods
+    Task<Result<List<TaskEntity>, Failure>> GetScheduledTasksReadyForExecutionAsync(DateTime currentTime, int limit = 50, CancellationToken cancellationToken = default);
+    Task<Result<TaskEntity, Failure>> UpdateScheduledTaskStatusAsync(string id, UpdateScheduledTaskStatusRequest request, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// Request model for creating a new task
 /// Based on TaskRequest design from .specs/design.md
+/// Supports both immediate and scheduled task execution
 /// </summary>
 public record CreateTaskRequest
 {
@@ -28,6 +33,12 @@ public record CreateTaskRequest
     public string? TraceId { get; init; }
     public string? EventId { get; init; }
     public string? SubscriberId { get; init; }
+    
+    // Scheduled execution properties
+    public DateTime? ScheduledAt { get; init; }        // Specific execution time
+    public TimeSpan? Delay { get; init; }              // Delay duration
+    public bool IsRecurring { get; init; } = false;    // Recurring execution
+    public string? CronExpression { get; init; }       // Cron expression (future expansion)
 }
 
 /// <summary>
@@ -63,4 +74,15 @@ public record UpdateTaskStatusRequest
 {
     public string Status { get; init; } = string.Empty;
     public string? ErrorMessage { get; init; }
+}
+
+/// <summary>
+/// Request model for updating scheduled task status
+/// Includes next scheduled time for retry logic
+/// </summary>
+public record UpdateScheduledTaskStatusRequest
+{
+    public string Status { get; init; } = string.Empty;
+    public string? ErrorMessage { get; init; }
+    public DateTime? NextScheduledAt { get; init; }
 }

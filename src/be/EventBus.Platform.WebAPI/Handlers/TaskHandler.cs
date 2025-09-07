@@ -202,4 +202,98 @@ public class TaskHandler(
             return Result<bool, Failure>.Fail(new Failure("Failed to execute task", "InternalError"));
         }
     }
+
+    public async Task<Result<List<TaskEntity>, Failure>> GetScheduledTasksReadyForExecutionAsync(DateTime currentTime, int limit = 50, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var traceContext = traceContextGetter.GetContext();
+            logger.LogInformation("Getting scheduled tasks ready for execution. CurrentTime: {CurrentTime}, Limit: {Limit}, TraceId: {TraceId}", 
+                currentTime, limit, traceContext?.TraceId);
+
+            // Query tasks that are scheduled and ready for execution
+            var result = await taskRepository.GetByStatusAsync("Scheduled", limit, cancellationToken);
+            
+            if (!result.IsSuccess)
+            {
+                return Result<List<TaskEntity>, Failure>.Fail(result.Failure!);
+            }
+
+            // Filter tasks that are ready for execution (scheduled time <= current time)
+            var readyTasks = result.Success!
+                .Where(task => task.ScheduledAt.HasValue && task.ScheduledAt.Value <= currentTime)
+                .ToList();
+
+            logger.LogInformation("Found {Count} scheduled tasks ready for execution", readyTasks.Count);
+            return Result<List<TaskEntity>, Failure>.Ok(readyTasks);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get scheduled tasks ready for execution");
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure("SCHEDULED_TASK_QUERY_FAILED", ex.Message));
+        }
+    }
+
+    public async Task<Result<TaskEntity, Failure>> UpdateScheduledTaskStatusAsync(string id, UpdateScheduledTaskStatusRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var traceContext = traceContextGetter.GetContext();
+            logger.LogInformation("Updating scheduled task {TaskId} status to {Status} with NextScheduledAt: {NextScheduledAt}. TraceId: {TraceId}", 
+                id, request.Status, request.NextScheduledAt, traceContext?.TraceId);
+
+            // Get existing task first
+            var taskResult = await taskRepository.GetByIdAsync(id, cancellationToken);
+            if (!taskResult.IsSuccess)
+            {
+                return Result<TaskEntity, Failure>.Fail(taskResult.Failure!);
+            }
+
+            var task = taskResult.Success!;
+            
+            // Update task properties
+            task.Status = request.Status;
+            task.ErrorMessage = request.ErrorMessage;
+            
+            // Update scheduled time if provided (for retry logic)
+            if (request.NextScheduledAt.HasValue)
+            {
+                task.ScheduledAt = request.NextScheduledAt.Value;
+            }
+
+            // Update timestamps based on status
+            switch (request.Status.ToLowerInvariant())
+            {
+                case "processing":
+                    task.StartedAt = DateTime.UtcNow;
+                    break;
+                case "completed":
+                case "failed":
+                    task.CompletedAt = DateTime.UtcNow;
+                    break;
+                case "scheduled":
+                    // For retry scenarios, increment retry count
+                    if (!string.IsNullOrEmpty(request.ErrorMessage) && request.ErrorMessage.StartsWith("Retry"))
+                    {
+                        task.RetryCount++;
+                    }
+                    break;
+            }
+
+            // Update task in repository
+            var updateResult = await taskRepository.UpdateAsync(task, cancellationToken);
+            if (!updateResult.IsSuccess)
+            {
+                return Result<TaskEntity, Failure>.Fail(updateResult.Failure!);
+            }
+
+            logger.LogInformation("Scheduled task {TaskId} status updated successfully to {Status}", id, request.Status);
+            return Result<TaskEntity, Failure>.Ok(task);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update scheduled task {TaskId} status", id);
+            return Result<TaskEntity, Failure>.Fail(new Failure("SCHEDULED_TASK_UPDATE_FAILED", ex.Message));
+        }
+    }
 }
