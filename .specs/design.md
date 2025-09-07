@@ -16,7 +16,7 @@ graph TB
     end
 
     subgraph "API Gateway Layer"
-        PUB[Pub API]
+        TASK_API[Task Management API]
         REG[Register API]
         CB[Callback API]
     end
@@ -42,14 +42,14 @@ graph TB
         EXT3[External API 3]
     end
 
-    APP1 --> PUB
+    APP1 --> TASK_API
     APP2 --> REG
-    APP3 --> PUB
+    APP3 --> TASK_API
     APP4 --> CB
 
-    PUB --> EH
-    PUB --> TH
-    PUB --> SH
+    TASK_API --> EH
+    TASK_API --> TH
+    TASK_API --> SH
     REG --> EH
     CB --> MON
 
@@ -140,7 +140,7 @@ src/
     │   └── Extensions/                      # 擴充方法
     ├── EventBus.Platform.WebAPI/           # Web API 層
     │   ├── Controllers/                     # REST 控制器
-    │   │   ├── PubController.cs            # 發布 API
+    │   │   ├── TaskManagementController.cs # Task Management API
     │   │   ├── RegisterController.cs       # 註冊 API
     │   │   └── CallbackController.cs       # 回調 API
     │   ├── Handlers/                        # 業務處理器
@@ -170,11 +170,11 @@ src/
 ```csharp
 [ApiController]
 [Route("api/[controller]")]
-public class PubControllerImpl(
+public class TaskManagementController(
     EventHandler eventHandler,
     SchedulerHandler schedulerHandler,
     IQueueService queueService,
-    ILogger<PubControllerImpl> logger) : ControllerBase, IPubController
+    ILogger<TaskManagementController> logger) : ControllerBase
 {
     public async Task<IActionResult> PublishEventAsync(
         PublishEventRequest request, 
@@ -285,7 +285,7 @@ public record TaskRequest
 ```mermaid
 sequenceDiagram
     participant Client as Client App
-    participant API as Pub API
+    participant API as Task Management API
     participant Queue as Queue
     participant Dispatcher as Dispatcher
     participant DB as DB
@@ -293,7 +293,7 @@ sequenceDiagram
     participant External as Callback API
 
     Note over Client,External: Task Creation & Queuing
-    Client->>API: POST /api/pub/tasks
+    Client->>API: POST /api/tasks
     API->>Queue: Enqueue Task Request
     Queue-->>API: Task Queued
     API-->>Client: 202 Accepted { TaskId }
@@ -394,7 +394,7 @@ public class TaskWorkerService : BackgroundService
 ```mermaid
 sequenceDiagram
     participant Client as Client App
-    participant API as Pub API
+    participant API as Task Management API
     participant Handler as Event Handler
     participant TraceCtx as TraceContext
     participant Repo as Event Repository
@@ -402,7 +402,7 @@ sequenceDiagram
     participant Dispatcher as RabbitMQ
     participant Sub as Subscriber
 
-    Client->>API: POST /api/pub/events
+    Client->>API: POST /api/events
     API->>TraceCtx: GetContext()
     TraceCtx-->>API: TraceContext
     API->>Handler: PublishEventAsync(request, traceContext)

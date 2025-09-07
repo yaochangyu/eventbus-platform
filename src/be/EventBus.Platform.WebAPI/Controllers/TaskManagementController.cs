@@ -1,0 +1,225 @@
+using EventBus.Platform.WebAPI.Handlers;
+using EventBus.Platform.WebAPI.Models;
+using Microsoft.AspNetCore.Mvc;
+
+namespace EventBus.Platform.WebAPI.Controllers;
+
+[ApiController]
+[Route("api/tasks")]
+public class TaskManagementController(
+    ITaskHandler taskHandler,
+    ILogger<TaskManagementController> logger) : ControllerBase
+{
+    /// <summary>
+    /// Get pending tasks for worker processing
+    /// </summary>
+    [HttpGet("pending")]
+    public async Task<IActionResult> GetPendingTasksAsync(
+        [FromQuery] int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (limit < 1 || limit > 100)
+            {
+                return BadRequest(new { error = "Limit must be between 1 and 100", code = "ValidationError" });
+            }
+
+            var result = await taskHandler.GetPendingTasksAsync(limit, cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                logger.LogWarning("Failed to get pending tasks: {Error}", result.Failure?.Message);
+                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
+            }
+
+            var tasks = result.Success!;
+            var responses = tasks.Select(task => new TaskResponse
+            {
+                Id = task.Id,
+                Status = task.Status,
+                CreatedAt = task.CreatedAt,
+                StartedAt = task.StartedAt,
+                CompletedAt = task.CompletedAt,
+                RetryCount = task.RetryCount,
+                ErrorMessage = task.ErrorMessage,
+                TraceId = task.TraceId
+            }).ToList();
+
+            logger.LogInformation("Retrieved {Count} pending tasks", responses.Count);
+
+            return Ok(new
+            {
+                tasks = responses,
+                count = responses.Count,
+                limit
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Exception in GetPendingTasksAsync");
+            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+        }
+    }
+
+    /// <summary>
+    /// Update task status (used by workers)
+    /// </summary>
+    [HttpPut("{taskId}/status")]
+    public async Task<IActionResult> UpdateTaskStatusAsync(
+        string taskId,
+        [FromBody] UpdateTaskStatusRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(taskId))
+            {
+                return BadRequest(new { error = "Task ID is required", code = "ValidationError" });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Status))
+            {
+                return BadRequest(new { error = "Status is required", code = "ValidationError" });
+            }
+
+            var validStatuses = new[] { "Pending", "Processing", "Completed", "Failed", "Cancelled" };
+            if (!validStatuses.Contains(request.Status))
+            {
+                return BadRequest(new { error = $"Invalid status. Must be one of: {string.Join(", ", validStatuses)}", code = "ValidationError" });
+            }
+
+            var result = await taskHandler.UpdateTaskStatusAsync(taskId, request.Status, request.ErrorMessage, cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                if (result.Failure?.Code == "NotFound")
+                {
+                    return NotFound(new { error = result.Failure?.Message });
+                }
+                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
+            }
+
+            var task = result.Success!;
+            var response = new TaskResponse
+            {
+                Id = task.Id,
+                Status = task.Status,
+                CreatedAt = task.CreatedAt,
+                StartedAt = task.StartedAt,
+                CompletedAt = task.CompletedAt,
+                RetryCount = task.RetryCount,
+                ErrorMessage = task.ErrorMessage,
+                TraceId = task.TraceId
+            };
+
+            logger.LogInformation("Task status updated: {TaskId} -> {Status} - TraceId: {TraceId}", 
+                taskId, request.Status, task.TraceId);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Exception in UpdateTaskStatusAsync: {TaskId}", taskId);
+            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+        }
+    }
+
+    /// <summary>
+    /// Get task details by ID (used by workers)
+    /// </summary>
+    [HttpGet("{taskId}")]
+    public async Task<IActionResult> GetTaskAsync(string taskId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(taskId))
+            {
+                return BadRequest(new { error = "Task ID is required", code = "ValidationError" });
+            }
+
+            var result = await taskHandler.GetTaskByIdAsync(taskId, cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                if (result.Failure?.Code == "NotFound")
+                {
+                    return NotFound(new { error = result.Failure?.Message });
+                }
+                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
+            }
+
+            var task = result.Success!;
+            var response = new TaskResponse
+            {
+                Id = task.Id,
+                Status = task.Status,
+                CreatedAt = task.CreatedAt,
+                StartedAt = task.StartedAt,
+                CompletedAt = task.CompletedAt,
+                RetryCount = task.RetryCount,
+                ErrorMessage = task.ErrorMessage,
+                TraceId = task.TraceId
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Exception in GetTaskAsync: {TaskId}", taskId);
+            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+        }
+    }
+
+    /// <summary>
+    /// Store task from queue (used by dispatcher)
+    /// </summary>
+    [HttpPost("store")]
+    public async Task<IActionResult> StoreTaskAsync([FromBody] CreateTaskRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Validate request
+            if (string.IsNullOrWhiteSpace(request.CallbackUrl))
+            {
+                return BadRequest(new { error = "CallbackUrl is required", code = "ValidationError" });
+            }
+
+            if (!Uri.TryCreate(request.CallbackUrl, UriKind.Absolute, out _))
+            {
+                return BadRequest(new { error = "CallbackUrl must be a valid URL", code = "ValidationError" });
+            }
+
+            var result = await taskHandler.CreateTaskAsync(request, cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                logger.LogWarning("Failed to store task: {Error}", result.Failure?.Message);
+                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
+            }
+
+            var task = result.Success!;
+            var response = new TaskResponse
+            {
+                Id = task.Id,
+                Status = task.Status,
+                CreatedAt = task.CreatedAt,
+                StartedAt = task.StartedAt,
+                CompletedAt = task.CompletedAt,
+                RetryCount = task.RetryCount,
+                ErrorMessage = task.ErrorMessage,
+                TraceId = task.TraceId
+            };
+
+            logger.LogInformation("Task stored successfully: {TaskId} - TraceId: {TraceId}", 
+                task.Id, task.TraceId);
+
+            return Created($"/api/tasks/{task.Id}", response);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Exception in StoreTaskAsync");
+            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+        }
+    }
+}

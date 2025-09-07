@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace EventBus.Platform.WebAPI.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
-public class PubController(
+[Route("api/platform")]
+public class PlatformController(
     ITaskHandler taskHandler,
     ISchedulerHandler schedulerHandler,
-    ILogger<PubController> logger) : ControllerBase
+    ILogger<PlatformController> logger) : ControllerBase
 {
     [HttpPost("tasks")]
     public async Task<IActionResult> CreateTaskAsync([FromBody] CreateTaskRequest request, CancellationToken cancellationToken = default)

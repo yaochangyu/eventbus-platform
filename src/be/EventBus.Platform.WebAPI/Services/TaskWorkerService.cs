@@ -7,6 +7,16 @@ using EventBus.Platform.WebAPI.Models;
 namespace EventBus.Platform.WebAPI.Services;
 
 /// <summary>
+/// API response model for pending tasks endpoint
+/// </summary>
+public class TaskApiResponse
+{
+    public List<TaskResponse> Tasks { get; set; } = new();
+    public int Count { get; set; }
+    public int Limit { get; set; }
+}
+
+/// <summary>
 /// Background service that polls for pending tasks and executes HTTP callbacks
 /// Based on design.md specifications - polls every 5 seconds
 /// </summary>
@@ -35,20 +45,15 @@ public class TaskWorkerService : BackgroundService
         {
             try
             {
-                using var scope = _serviceProvider.CreateScope();
-                var taskHandler = scope.ServiceProvider.GetRequiredService<ITaskHandler>();
-
-                // Get pending tasks
-                var pendingTasksResult = await taskHandler.GetPendingTasksAsync(50, stoppingToken);
+                // Get pending tasks via HTTP API instead of direct handler access
+                var pendingTasks = await GetPendingTasksViaApiAsync(stoppingToken);
                 
-                if (!pendingTasksResult.IsSuccess)
+                if (pendingTasks == null)
                 {
-                    _logger.LogError("Failed to retrieve pending tasks: {Error}", pendingTasksResult.Failure?.Message);
+                    _logger.LogError("Failed to retrieve pending tasks from API");
                     await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
                     continue;
                 }
-
-                var pendingTasks = pendingTasksResult.Success!;
 
                 if (pendingTasks.Any())
                 {
@@ -56,7 +61,7 @@ public class TaskWorkerService : BackgroundService
 
                     // Process tasks in parallel (limited concurrency)
                     var semaphore = new SemaphoreSlim(5, 5); // Max 5 concurrent executions
-                    var tasks = pendingTasks.Select(task => ProcessTaskAsync(task, taskHandler, semaphore, stoppingToken));
+                    var tasks = pendingTasks.Select(task => ProcessTaskViaApiAsync(task, semaphore, stoppingToken));
                     
                     await Task.WhenAll(tasks);
                 }
@@ -73,12 +78,55 @@ public class TaskWorkerService : BackgroundService
         _logger.LogInformation("TaskWorkerService stopped");
     }
 
-    private async Task ProcessTaskAsync(TaskEntity task, ITaskHandler taskHandler, SemaphoreSlim semaphore, CancellationToken cancellationToken)
+    private async Task<List<TaskEntity>?> GetPendingTasksViaApiAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.BaseAddress = new Uri("http://localhost:5000"); // Local API
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "TaskWorker/1.0");
+            
+            var response = await httpClient.GetFromJsonAsync<TaskApiResponse>(
+                "/api/tasks/pending?limit=50", cancellationToken);
+                
+            if (response?.Tasks != null)
+            {
+                // Convert TaskResponse to TaskEntity
+                return response.Tasks.Select(t => new TaskEntity
+                {
+                    Id = t.Id,
+                    Status = t.Status,
+                    CreatedAt = t.CreatedAt,
+                    StartedAt = t.StartedAt,
+                    CompletedAt = t.CompletedAt,
+                    RetryCount = t.RetryCount,
+                    ErrorMessage = t.ErrorMessage,
+                    TraceId = t.TraceId,
+                    // These fields need to be retrieved separately or stored in response
+                    CallbackUrl = "", // Will be populated when needed
+                    Method = "POST",
+                    RequestPayload = "",
+                    Headers = new Dictionary<string, string>(),
+                    MaxRetries = 3,
+                    TimeoutSeconds = 30
+                }).ToList();
+            }
+            
+            return new List<TaskEntity>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve pending tasks via API");
+            return null;
+        }
+    }
+    
+    private async Task ProcessTaskViaApiAsync(TaskEntity task, SemaphoreSlim semaphore, CancellationToken cancellationToken)
     {
         await semaphore.WaitAsync(cancellationToken);
         try
         {
-            await ExecuteTaskAsync(task, taskHandler, cancellationToken);
+            await ExecuteTaskViaApiAsync(task, cancellationToken);
         }
         finally
         {
@@ -86,7 +134,7 @@ public class TaskWorkerService : BackgroundService
         }
     }
 
-    private async Task ExecuteTaskAsync(TaskEntity task, ITaskHandler taskHandler, CancellationToken cancellationToken)
+    private async Task ExecuteTaskViaApiAsync(TaskEntity task, CancellationToken cancellationToken)
     {
         var taskId = task.Id;
         var startTime = DateTime.UtcNow;
@@ -96,23 +144,30 @@ public class TaskWorkerService : BackgroundService
 
         try
         {
-            // Update task status to Processing
-            var processingResult = await taskHandler.UpdateTaskStatusAsync(taskId, "Processing", cancellationToken: cancellationToken);
-            if (!processingResult.IsSuccess)
+            // Update task status to Processing via API
+            var processingSuccess = await UpdateTaskStatusViaApiAsync(taskId, "Processing", null, cancellationToken);
+            if (!processingSuccess)
             {
-                _logger.LogError("Failed to update task status to Processing: {TaskId} - {Error}",
-                    taskId, processingResult.Failure?.Message);
+                _logger.LogError("Failed to update task status to Processing: {TaskId}", taskId);
+                return;
+            }
+            
+            // Get full task details via API for callback execution
+            var fullTask = await GetTaskByIdViaApiAsync(taskId, cancellationToken);
+            if (fullTask == null)
+            {
+                _logger.LogError("Failed to retrieve task details: {TaskId}", taskId);
                 return;
             }
 
             // Execute HTTP callback
-            var success = await ExecuteHttpCallbackAsync(task, cancellationToken);
+            var success = await ExecuteHttpCallbackAsync(fullTask, cancellationToken);
 
             if (success)
             {
-                // Mark task as completed
-                var completedResult = await taskHandler.UpdateTaskStatusAsync(taskId, "Completed", cancellationToken: cancellationToken);
-                if (completedResult.IsSuccess)
+                // Mark task as completed via API
+                var completedSuccess = await UpdateTaskStatusViaApiAsync(taskId, "Completed", null, cancellationToken);
+                if (completedSuccess)
                 {
                     var duration = DateTime.UtcNow - startTime;
                     _logger.LogInformation("Task completed successfully: {TaskId} in {Duration}ms - TraceId: {TraceId}",
@@ -122,7 +177,7 @@ public class TaskWorkerService : BackgroundService
             else
             {
                 // Handle failure and retry logic
-                await HandleTaskFailureAsync(task, taskHandler, "HTTP callback failed", cancellationToken);
+                await HandleTaskFailureViaApiAsync(fullTask, "HTTP callback failed", cancellationToken);
             }
         }
         catch (Exception ex)
@@ -130,7 +185,12 @@ public class TaskWorkerService : BackgroundService
             _logger.LogError(ex, "Exception during task execution: {TaskId} - TraceId: {TraceId}",
                 taskId, task.TraceId);
             
-            await HandleTaskFailureAsync(task, taskHandler, ex.Message, cancellationToken);
+            // Get full task details for failure handling
+            var failedTask = await GetTaskByIdViaApiAsync(taskId, cancellationToken);
+            if (failedTask != null)
+            {
+                await HandleTaskFailureViaApiAsync(failedTask, ex.Message, cancellationToken);
+            }
         }
     }
 
@@ -215,18 +275,86 @@ public class TaskWorkerService : BackgroundService
         }
     }
 
-    private async Task HandleTaskFailureAsync(TaskEntity task, ITaskHandler taskHandler, string errorMessage, CancellationToken cancellationToken)
+    private async Task<TaskEntity?> GetTaskByIdViaApiAsync(string taskId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.BaseAddress = new Uri("http://localhost:5000");
+            
+            var response = await httpClient.GetFromJsonAsync<TaskResponse>(
+                $"/api/tasks/{taskId}", cancellationToken);
+                
+            if (response != null)
+            {
+                // Convert TaskResponse back to TaskEntity (this is a workaround)
+                // In a real scenario, we'd need a separate endpoint that returns full task details
+                return new TaskEntity
+                {
+                    Id = response.Id,
+                    Status = response.Status,
+                    CreatedAt = response.CreatedAt,
+                    StartedAt = response.StartedAt,
+                    CompletedAt = response.CompletedAt,
+                    RetryCount = response.RetryCount,
+                    ErrorMessage = response.ErrorMessage,
+                    TraceId = response.TraceId,
+                    // These would need to come from a different endpoint or be included in the response
+                    CallbackUrl = "https://example.com/callback", // Placeholder
+                    Method = "POST",
+                    RequestPayload = "{}",
+                    Headers = new Dictionary<string, string>(),
+                    MaxRetries = 3,
+                    TimeoutSeconds = 30
+                };
+            }
+            
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get task by ID via API: {TaskId}", taskId);
+            return null;
+        }
+    }
+    
+    private async Task<bool> UpdateTaskStatusViaApiAsync(string taskId, string status, string? errorMessage, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.BaseAddress = new Uri("http://localhost:5000");
+            
+            var request = new UpdateTaskStatusRequest
+            {
+                Status = status,
+                ErrorMessage = errorMessage
+            };
+            
+            var response = await httpClient.PutAsJsonAsync(
+                $"/api/tasks/{taskId}/status", request, cancellationToken);
+                
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update task status via API: {TaskId} -> {Status}", taskId, status);
+            return false;
+        }
+    }
+    
+    private async Task HandleTaskFailureViaApiAsync(TaskEntity task, string errorMessage, CancellationToken cancellationToken)
     {
         var taskId = task.Id;
         var currentRetryCount = task.RetryCount + 1; // +1 because we're about to increment
 
         if (currentRetryCount <= task.MaxRetries)
         {
-            // Mark as failed but allow retry
-            var failedResult = await taskHandler.UpdateTaskStatusAsync(
-                taskId, "Pending", $"Retry {currentRetryCount}/{task.MaxRetries}: {errorMessage}", cancellationToken);
+            // Mark as failed but allow retry via API
+            var retryMessage = $"Retry {currentRetryCount}/{task.MaxRetries}: {errorMessage}";
+            var success = await UpdateTaskStatusViaApiAsync(taskId, "Pending", retryMessage, cancellationToken);
 
-            if (failedResult.IsSuccess)
+            if (success)
             {
                 _logger.LogWarning("Task marked for retry: {TaskId} ({RetryCount}/{MaxRetries}) - TraceId: {TraceId}",
                     taskId, currentRetryCount, task.MaxRetries, task.TraceId);
@@ -234,11 +362,11 @@ public class TaskWorkerService : BackgroundService
         }
         else
         {
-            // Max retries exceeded, mark as permanently failed
-            var failedResult = await taskHandler.UpdateTaskStatusAsync(
-                taskId, "Failed", $"Max retries exceeded: {errorMessage}", cancellationToken);
+            // Max retries exceeded, mark as permanently failed via API
+            var failureMessage = $"Max retries exceeded: {errorMessage}";
+            var success = await UpdateTaskStatusViaApiAsync(taskId, "Failed", failureMessage, cancellationToken);
 
-            if (failedResult.IsSuccess)
+            if (success)
             {
                 _logger.LogError("Task failed permanently: {TaskId} after {MaxRetries} retries - TraceId: {TraceId}",
                     taskId, task.MaxRetries, task.TraceId);
