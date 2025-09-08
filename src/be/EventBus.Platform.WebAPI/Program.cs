@@ -46,11 +46,8 @@ builder.Services.AddInfrastructure();
 // Add Repository services
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.IEventRepository, EventBus.Platform.WebAPI.Repositories.EventRepository>();
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ITaskRepository, EventBus.Platform.WebAPI.Repositories.TaskRepository>();
-builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ISchedulerTaskRepository, EventBus.Platform.WebAPI.Repositories.SchedulerTaskRepository>();
-builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ISubscriptionRepository, EventBus.Platform.WebAPI.Repositories.SubscriptionRepository>();
 
 // Add Handler services
-builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ISchedulerHandler, EventBus.Platform.WebAPI.Handlers.SchedulerHandler>();
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ITaskHandler, EventBus.Platform.WebAPI.Handlers.TaskHandler>();
 
 // Note: TaskWorkerService has been moved to EventBus.Platform.TaskWorker Console Application
