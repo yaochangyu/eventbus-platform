@@ -1,43 +1,39 @@
+using EventBus.Infrastructure.Queue;
 using EventBus.Infrastructure.TraceContext;
 using EventBus.Platform.WebAPI.Models;
 using EventBus.Platform.WebAPI.Repositories;
+using System.Text.Json;
 
 namespace EventBus.Platform.WebAPI.Handlers;
 
 public class TaskHandler(
-    ITaskRepository taskRepository,
     IContextGetter<TraceContext?> traceContextGetter,
+    ITaskRepository taskRepository,
+    IQueueService queueService,
     ILogger<TaskHandler> logger) : ITaskHandler
 {
-    public async Task<Result<TaskEntity, Failure>> CreateTaskAsync(CreateTaskRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<TaskEntity, Failure>> CreateTaskAsync(CreateTaskRequest request,
+        CancellationToken cancellationToken = default)
     {
+        var traceContext = traceContextGetter.GetContext();
         try
         {
-            var traceContext = traceContextGetter.GetContext();
             var taskId = Guid.NewGuid().ToString();
 
             var taskEntity = new TaskEntity
             {
                 Id = taskId,
-                EventId = request.EventId ?? string.Empty,
-                SubscriberId = request.SubscriberId ?? string.Empty,
-                CallbackUrl = request.CallbackUrl,
-                Method = request.Method,
-                RequestPayload = request.RequestPayload,
-                Headers = request.Headers,
-                MaxRetries = request.MaxRetries,
-                TimeoutSeconds = request.TimeoutSeconds,
-                TraceId = request.TraceId ?? traceContext?.TraceId,
-                Status = "Pending",
-                CreatedAt = DateTime.UtcNow
+                TaskName = request.TaskName,
             };
+
+            await queueService.EnqueueAsync(request.Data, request.TaskName, cancellationToken);
 
             var result = await taskRepository.CreateAsync(taskEntity, cancellationToken);
 
             if (result.IsSuccess)
             {
-                logger.LogInformation("Task created successfully: {TaskId}, CallbackUrl: {CallbackUrl} - TraceId: {TraceId}",
-                    taskId, request.CallbackUrl, taskEntity.TraceId);
+                logger.LogInformation("Task created successfully: {TaskId} ({TaskName}) - TraceId: {TraceId}",
+                    taskId, request.TaskName, taskEntity.TraceId);
             }
             else
             {
@@ -49,18 +45,18 @@ public class TaskHandler(
         }
         catch (Exception ex)
         {
-            var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Exception in CreateTaskAsync - TraceId: {TraceId}", traceContext?.TraceId);
             return Result<TaskEntity, Failure>.Fail(new Failure("Failed to create task", "InternalError"));
         }
     }
-
-    public async Task<Result<TaskEntity, Failure>> GetTaskByIdAsync(string id, CancellationToken cancellationToken = default)
+    
+    public async Task<Result<TaskEntity, Failure>> GetTaskByIdAsync(string id,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var result = await taskRepository.GetByIdAsync(id, cancellationToken);
-            
+
             if (!result.IsSuccess)
             {
                 logger.LogWarning("Task not found: {TaskId}", id);
@@ -71,12 +67,14 @@ public class TaskHandler(
         catch (Exception ex)
         {
             var traceContext = traceContextGetter.GetContext();
-            logger.LogError(ex, "Exception in GetTaskByIdAsync: {TaskId} - TraceId: {TraceId}", id, traceContext?.TraceId);
+            logger.LogError(ex, "Exception in GetTaskByIdAsync: {TaskId} - TraceId: {TraceId}", id,
+                traceContext?.TraceId);
             return Result<TaskEntity, Failure>.Fail(new Failure("Failed to retrieve task", "InternalError"));
         }
     }
 
-    public async Task<Result<List<TaskEntity>, Failure>> GetTasksByEventIdAsync(string eventId, CancellationToken cancellationToken = default)
+    public async Task<Result<List<TaskEntity>, Failure>> GetTasksByEventIdAsync(string eventId,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -85,12 +83,15 @@ public class TaskHandler(
         catch (Exception ex)
         {
             var traceContext = traceContextGetter.GetContext();
-            logger.LogError(ex, "Exception in GetTasksByEventIdAsync: {EventId} - TraceId: {TraceId}", eventId, traceContext?.TraceId);
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve tasks by event ID", "InternalError"));
+            logger.LogError(ex, "Exception in GetTasksByEventIdAsync: {EventId} - TraceId: {TraceId}", eventId,
+                traceContext?.TraceId);
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve tasks by event ID",
+                "InternalError"));
         }
     }
 
-    public async Task<Result<List<TaskEntity>, Failure>> GetTasksByStatusAsync(string status, int limit = 100, CancellationToken cancellationToken = default)
+    public async Task<Result<List<TaskEntity>, Failure>> GetTasksByStatusAsync(string status, int limit = 100,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -99,12 +100,15 @@ public class TaskHandler(
         catch (Exception ex)
         {
             var traceContext = traceContextGetter.GetContext();
-            logger.LogError(ex, "Exception in GetTasksByStatusAsync: {Status} - TraceId: {TraceId}", status, traceContext?.TraceId);
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve tasks by status", "InternalError"));
+            logger.LogError(ex, "Exception in GetTasksByStatusAsync: {Status} - TraceId: {TraceId}", status,
+                traceContext?.TraceId);
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve tasks by status",
+                "InternalError"));
         }
     }
 
-    public async Task<Result<List<TaskEntity>, Failure>> GetPendingTasksAsync(int limit = 100, CancellationToken cancellationToken = default)
+    public async Task<Result<List<TaskEntity>, Failure>> GetPendingTasksAsync(int limit = 100,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -114,11 +118,13 @@ public class TaskHandler(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Exception in GetPendingTasksAsync - TraceId: {TraceId}", traceContext?.TraceId);
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve pending tasks", "InternalError"));
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve pending tasks",
+                "InternalError"));
         }
     }
 
-    public async Task<Result<TaskEntity, Failure>> UpdateTaskStatusAsync(string id, string status, string? errorMessage = null, CancellationToken cancellationToken = default)
+    public async Task<Result<TaskEntity, Failure>> UpdateTaskStatusAsync(string id, string status,
+        string? errorMessage = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -130,18 +136,20 @@ public class TaskHandler(
 
             var existingTask = getResult.Success!;
             var now = DateTime.UtcNow;
-            
+
             var updatedTask = existingTask with
             {
                 Status = status,
                 ErrorMessage = errorMessage ?? existingTask.ErrorMessage,
                 StartedAt = status == "Processing" && existingTask.StartedAt == null ? now : existingTask.StartedAt,
-                CompletedAt = (status == "Completed" || status == "Failed") && existingTask.CompletedAt == null ? now : existingTask.CompletedAt,
+                CompletedAt = (status == "Completed" || status == "Failed") && existingTask.CompletedAt == null
+                    ? now
+                    : existingTask.CompletedAt,
                 RetryCount = status == "Failed" ? existingTask.RetryCount + 1 : existingTask.RetryCount
             };
 
             var updateResult = await taskRepository.UpdateAsync(updatedTask, cancellationToken);
-            
+
             if (updateResult.IsSuccess)
             {
                 logger.LogInformation("Task status updated: {TaskId} -> {Status} - TraceId: {TraceId}",
@@ -153,7 +161,8 @@ public class TaskHandler(
         catch (Exception ex)
         {
             var traceContext = traceContextGetter.GetContext();
-            logger.LogError(ex, "Exception in UpdateTaskStatusAsync: {TaskId} - TraceId: {TraceId}", id, traceContext?.TraceId);
+            logger.LogError(ex, "Exception in UpdateTaskStatusAsync: {TaskId} - TraceId: {TraceId}", id,
+                traceContext?.TraceId);
             return Result<TaskEntity, Failure>.Fail(new Failure("Failed to update task status", "InternalError"));
         }
     }
@@ -169,7 +178,7 @@ public class TaskHandler(
             }
 
             var task = getResult.Success!;
-            
+
             // Mark task as processing
             var processingResult = await UpdateTaskStatusAsync(id, "Processing", cancellationToken: cancellationToken);
             if (!processingResult.IsSuccess)
@@ -187,8 +196,9 @@ public class TaskHandler(
         catch (Exception ex)
         {
             var traceContext = traceContextGetter.GetContext();
-            logger.LogError(ex, "Exception in ExecuteTaskAsync: {TaskId} - TraceId: {TraceId}", id, traceContext?.TraceId);
-            
+            logger.LogError(ex, "Exception in ExecuteTaskAsync: {TaskId} - TraceId: {TraceId}", id,
+                traceContext?.TraceId);
+
             // Try to mark task as failed
             try
             {
@@ -198,22 +208,24 @@ public class TaskHandler(
             {
                 // Ignore update errors during exception handling
             }
-            
+
             return Result<bool, Failure>.Fail(new Failure("Failed to execute task", "InternalError"));
         }
     }
 
-    public async Task<Result<List<TaskEntity>, Failure>> GetScheduledTasksReadyForExecutionAsync(DateTime currentTime, int limit = 50, CancellationToken cancellationToken = default)
+    public async Task<Result<List<TaskEntity>, Failure>> GetScheduledTasksReadyForExecutionAsync(DateTime currentTime,
+        int limit = 50, CancellationToken cancellationToken = default)
     {
         try
         {
             var traceContext = traceContextGetter.GetContext();
-            logger.LogInformation("Getting scheduled tasks ready for execution. CurrentTime: {CurrentTime}, Limit: {Limit}, TraceId: {TraceId}", 
+            logger.LogInformation(
+                "Getting scheduled tasks ready for execution. CurrentTime: {CurrentTime}, Limit: {Limit}, TraceId: {TraceId}",
                 currentTime, limit, traceContext?.TraceId);
 
             // Query tasks that are scheduled and ready for execution
             var result = await taskRepository.GetByStatusAsync("Scheduled", limit, cancellationToken);
-            
+
             if (!result.IsSuccess)
             {
                 return Result<List<TaskEntity>, Failure>.Fail(result.Failure!);
@@ -234,12 +246,14 @@ public class TaskHandler(
         }
     }
 
-    public async Task<Result<TaskEntity, Failure>> UpdateScheduledTaskStatusAsync(string id, UpdateScheduledTaskStatusRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<TaskEntity, Failure>> UpdateScheduledTaskStatusAsync(string id,
+        UpdateScheduledTaskStatusRequest request, CancellationToken cancellationToken = default)
     {
         try
         {
             var traceContext = traceContextGetter.GetContext();
-            logger.LogInformation("Updating scheduled task {TaskId} status to {Status} with NextScheduledAt: {NextScheduledAt}. TraceId: {TraceId}", 
+            logger.LogInformation(
+                "Updating scheduled task {TaskId} status to {Status} with NextScheduledAt: {NextScheduledAt}. TraceId: {TraceId}",
                 id, request.Status, request.NextScheduledAt, traceContext?.TraceId);
 
             // Get existing task first
@@ -250,11 +264,11 @@ public class TaskHandler(
             }
 
             var task = taskResult.Success!;
-            
+
             // Update task properties
             task.Status = request.Status;
             task.ErrorMessage = request.ErrorMessage;
-            
+
             // Update scheduled time if provided (for retry logic)
             if (request.NextScheduledAt.HasValue)
             {
@@ -277,6 +291,7 @@ public class TaskHandler(
                     {
                         task.RetryCount++;
                     }
+
                     break;
             }
 
@@ -287,7 +302,8 @@ public class TaskHandler(
                 return Result<TaskEntity, Failure>.Fail(updateResult.Failure!);
             }
 
-            logger.LogInformation("Scheduled task {TaskId} status updated successfully to {Status}", id, request.Status);
+            logger.LogInformation("Scheduled task {TaskId} status updated successfully to {Status}", id,
+                request.Status);
             return Result<TaskEntity, Failure>.Ok(task);
         }
         catch (Exception ex)

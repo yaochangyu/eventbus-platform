@@ -18,6 +18,7 @@ public record EventEntity
 public record TaskEntity
 {
     public string Id { get; init; } = Guid.NewGuid().ToString();
+    public string TaskName { get; init; } = string.Empty; // Reference to task configuration
     public string EventId { get; init; } = string.Empty;
     public string SubscriberId { get; init; } = string.Empty;
     public string CallbackUrl { get; init; } = string.Empty;

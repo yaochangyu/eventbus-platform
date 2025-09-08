@@ -28,6 +28,18 @@ builder.Services.AddControllers()
 
 builder.Services.AddOpenApi();
 
+// Add Swagger services
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo 
+    { 
+        Title = "EventBus Platform API", 
+        Version = "v1",
+        Description = "EventBus Platform 的 Web API，提供事件管理和任務處理功能。"
+    });
+});
+
 // Add HttpContextAccessor and HttpClient
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
@@ -49,6 +61,7 @@ builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ITaskRepository
 
 // Add Handler services
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ITaskHandler, EventBus.Platform.WebAPI.Handlers.TaskHandler>();
+builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ITaskConfigHandler, EventBus.Platform.WebAPI.Handlers.TaskConfigHandler>();
 
 // Note: TaskWorkerService has been moved to EventBus.Platform.TaskWorker Console Application
 
@@ -62,6 +75,12 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "EventBus Platform API v1");
+        c.RoutePrefix = "swagger";
+    });
     app.UseDeveloperExceptionPage();
 }
 

@@ -9,78 +9,38 @@ namespace EventBus.Platform.WebAPI.Controllers;
 [Route("api/tasks")]
 public class TaskManagementController(
     ITaskHandler taskHandler,
-    IQueueService queueService,
     ILogger<TaskManagementController> logger) : ControllerBase
 {
     /// <summary>
     /// Create new task (unified API for immediate and scheduled execution)
-    /// Based on design.md Task execution flow requirements
+    /// Now uses TaskName to reference configuration and Data for execution payload
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> CreateTaskAsync(
-        [FromBody] CreateTaskRequest request, 
+        [FromBody] CreateTaskRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
+        // Validate request
+        if (string.IsNullOrWhiteSpace(request.TaskName))
         {
-            // Validate request
-            if (string.IsNullOrWhiteSpace(request.CallbackUrl))
-            {
-                return BadRequest(new { error = "CallbackUrl is required", code = "ValidationError" });
-            }
-
-            if (!Uri.TryCreate(request.CallbackUrl, UriKind.Absolute, out _))
-            {
-                return BadRequest(new { error = "CallbackUrl must be a valid URL", code = "ValidationError" });
-            }
-
-            var taskId = Guid.NewGuid().ToString();
-            
-            // Determine execution type: immediate vs scheduled
-            if (request.ScheduledAt.HasValue || request.Delay.HasValue)
-            {
-                // Scheduled execution task
-                var scheduledAt = request.ScheduledAt ?? DateTime.UtcNow.Add(request.Delay ?? TimeSpan.Zero);
-                
-                // Create task request with scheduled time
-                var taskRequest = request with { ScheduledAt = scheduledAt };
-                
-                // Enqueue to scheduled task queue
-                await queueService.EnqueueAsync(taskRequest, "scheduled-tasks", cancellationToken);
-                
-                logger.LogInformation("Scheduled task created: {TaskId} at {ScheduledAt} - TraceId: {TraceId}", 
-                    taskId, scheduledAt, request.TraceId);
-                
-                return Accepted(new { 
-                    TaskId = taskId, 
-                    ScheduledAt = scheduledAt, 
-                    Type = "Scheduled",
-                    TraceId = request.TraceId 
-                });
-            }
-            else
-            {
-                // Immediate execution task
-                var taskRequest = request with { };
-                
-                // Enqueue to immediate task queue
-                await queueService.EnqueueAsync(taskRequest, "immediate-tasks", cancellationToken);
-                
-                logger.LogInformation("Immediate task created: {TaskId} - TraceId: {TraceId}", 
-                    taskId, request.TraceId);
-                
-                return Accepted(new { 
-                    TaskId = taskId, 
-                    Type = "Immediate",
-                    TraceId = request.TraceId 
-                });
-            }
+            return BadRequest(new { error = "TaskName is required", code = "ValidationError" });
         }
-        catch (Exception ex)
+
+        var result = await taskHandler.CreateTaskAsync(request, cancellationToken); // Fire and forget
+        if (result.IsSuccess)
         {
-            logger.LogError(ex, "Exception in CreateTaskAsync");
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+            return Accepted(new
+            {
+                Task = result.Success,
+                TaskName = request.TaskName,
+                Type = "Immediate"
+            });
         }
+
+        return new ObjectResult(result.Failure)
+        {
+            StatusCode = 500
+        };
     }
 
     /// <summary>
@@ -161,7 +121,8 @@ public class TaskManagementController(
                 return BadRequest(new { error = "Limit must be between 1 and 100", code = "ValidationError" });
             }
 
-            var result = await taskHandler.GetScheduledTasksReadyForExecutionAsync(currentTime, limit, cancellationToken);
+            var result =
+                await taskHandler.GetScheduledTasksReadyForExecutionAsync(currentTime, limit, cancellationToken);
 
             if (!result.IsSuccess)
             {
@@ -191,7 +152,7 @@ public class TaskManagementController(
                 SubscriberId = task.SubscriberId
             }).ToList();
 
-            logger.LogInformation("Retrieved {Count} scheduled tasks ready for execution at {CurrentTime}", 
+            logger.LogInformation("Retrieved {Count} scheduled tasks ready for execution at {CurrentTime}",
                 responses.Count, currentTime);
 
             return Ok(new
@@ -233,10 +194,16 @@ public class TaskManagementController(
             var validStatuses = new[] { "Pending", "Processing", "Completed", "Failed", "Cancelled" };
             if (!validStatuses.Contains(request.Status))
             {
-                return BadRequest(new { error = $"Invalid status. Must be one of: {string.Join(", ", validStatuses)}", code = "ValidationError" });
+                return BadRequest(new
+                {
+                    error = $"Invalid status. Must be one of: {string.Join(", ", validStatuses)}",
+                    code = "ValidationError"
+                });
             }
 
-            var result = await taskHandler.UpdateTaskStatusAsync(taskId, request.Status, request.ErrorMessage, cancellationToken);
+            var result =
+                await taskHandler.UpdateTaskStatusAsync(taskId, request.Status, request.ErrorMessage,
+                    cancellationToken);
 
             if (!result.IsSuccess)
             {
@@ -244,6 +211,7 @@ public class TaskManagementController(
                 {
                     return NotFound(new { error = result.Failure?.Message });
                 }
+
                 return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
             }
 
@@ -269,7 +237,7 @@ public class TaskManagementController(
                 SubscriberId = task.SubscriberId
             };
 
-            logger.LogInformation("Task status updated: {TaskId} -> {Status} - TraceId: {TraceId}", 
+            logger.LogInformation("Task status updated: {TaskId} -> {Status} - TraceId: {TraceId}",
                 taskId, request.Status, task.TraceId);
 
             return Ok(response);
@@ -302,6 +270,7 @@ public class TaskManagementController(
                 {
                     return NotFound(new { error = result.Failure?.Message });
                 }
+
                 return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
             }
 
@@ -338,13 +307,20 @@ public class TaskManagementController(
 
     /// <summary>
     /// Store task from queue (used by dispatcher)
+    /// Now accepts internal task request with complete configuration
     /// </summary>
     [HttpPost("store")]
-    public async Task<IActionResult> StoreTaskAsync([FromBody] CreateTaskRequest request, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> StoreTaskAsync([FromBody] CreateTaskConfigRequest request,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             // Validate request
+            if (string.IsNullOrWhiteSpace(request.TaskName))
+            {
+                return BadRequest(new { error = "TaskName is required", code = "ValidationError" });
+            }
+
             if (string.IsNullOrWhiteSpace(request.CallbackUrl))
             {
                 return BadRequest(new { error = "CallbackUrl is required", code = "ValidationError" });
@@ -355,11 +331,19 @@ public class TaskManagementController(
                 return BadRequest(new { error = "CallbackUrl must be a valid URL", code = "ValidationError" });
             }
 
-            var result = await taskHandler.CreateTaskAsync(request, cancellationToken);
+            // Convert internal request to original format for handler
+            var handlerRequest = new CreateTaskRequest
+            {
+                TaskName = request.TaskName,
+                Data = request.Data
+            };
+
+            var result = await taskHandler.CreateTaskAsync(handlerRequest, cancellationToken);
 
             if (!result.IsSuccess)
             {
-                logger.LogWarning("Failed to store task: {Error}", result.Failure?.Message);
+                logger.LogWarning("Failed to store task: {TaskName} - {Error}", request.TaskName,
+                    result.Failure?.Message);
                 return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
             }
 
@@ -374,19 +358,19 @@ public class TaskManagementController(
                 RetryCount = task.RetryCount,
                 ErrorMessage = task.ErrorMessage,
                 TraceId = task.TraceId,
-                // Execution details for TaskWorkerService
-                CallbackUrl = task.CallbackUrl,
-                Method = task.Method,
-                RequestPayload = task.RequestPayload,
-                Headers = task.Headers,
-                MaxRetries = task.MaxRetries,
-                TimeoutSeconds = task.TimeoutSeconds,
-                EventId = task.EventId,
-                SubscriberId = task.SubscriberId
+                // Execution details for TaskWorkerService (from internal request)
+                CallbackUrl = request.CallbackUrl,
+                Method = request.Method,
+                RequestPayload = request.Data,
+                Headers = request.Headers,
+                MaxRetries = request.MaxRetries,
+                TimeoutSeconds = request.TimeoutSeconds,
+                EventId = request.EventId,
+                SubscriberId = request.SubscriberId
             };
 
-            logger.LogInformation("Task stored successfully: {TaskId} - TraceId: {TraceId}", 
-                task.Id, task.TraceId);
+            logger.LogInformation("Task stored successfully: {TaskId} ({TaskName}) - TraceId: {TraceId}",
+                task.Id, request.TaskName, task.TraceId);
 
             return Created($"/api/tasks/{task.Id}", response);
         }
@@ -422,7 +406,11 @@ public class TaskManagementController(
             var validStatuses = new[] { "Scheduled", "Processing", "Completed", "Failed", "Cancelled" };
             if (!validStatuses.Contains(request.Status))
             {
-                return BadRequest(new { error = $"Invalid status. Must be one of: {string.Join(", ", validStatuses)}", code = "ValidationError" });
+                return BadRequest(new
+                {
+                    error = $"Invalid status. Must be one of: {string.Join(", ", validStatuses)}",
+                    code = "ValidationError"
+                });
             }
 
             var result = await taskHandler.UpdateScheduledTaskStatusAsync(taskId, request, cancellationToken);
@@ -433,6 +421,7 @@ public class TaskManagementController(
                 {
                     return NotFound(new { error = result.Failure?.Message });
                 }
+
                 return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
             }
 
@@ -458,7 +447,8 @@ public class TaskManagementController(
                 SubscriberId = task.SubscriberId
             };
 
-            logger.LogInformation("Scheduled task status updated: {TaskId} -> {Status} (NextScheduled: {NextScheduledAt}) - TraceId: {TraceId}", 
+            logger.LogInformation(
+                "Scheduled task status updated: {TaskId} -> {Status} (NextScheduled: {NextScheduledAt}) - TraceId: {TraceId}",
                 taskId, request.Status, request.NextScheduledAt, task.TraceId);
 
             return Ok(response);

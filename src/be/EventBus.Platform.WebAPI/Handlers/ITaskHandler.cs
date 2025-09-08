@@ -19,27 +19,25 @@ public interface ITaskHandler
 
 /// <summary>
 /// Request model for creating a new task
-/// Based on TaskRequest design from .specs/design.md
-/// Supports both immediate and scheduled task execution
+/// Only contains task name and execution data
+/// All configuration details are managed through Task Config API
 /// </summary>
 public record CreateTaskRequest
 {
-    public string CallbackUrl { get; init; } = string.Empty;
-    public string Method { get; init; } = "POST";
-    public string RequestPayload { get; init; } = string.Empty;
-    public Dictionary<string, string>? Headers { get; init; }
-    public int MaxRetries { get; init; } = 3;
-    public int TimeoutSeconds { get; init; } = 30;
-    public string? TraceId { get; init; }
-    public string? EventId { get; init; }
-    public string? SubscriberId { get; init; }
-    
-    // Scheduled execution properties
-    public DateTime? ScheduledAt { get; init; }        // Specific execution time
-    public TimeSpan? Delay { get; init; }              // Delay duration
-    public bool IsRecurring { get; init; } = false;    // Recurring execution
-    public string? CronExpression { get; init; }       // Cron expression (future expansion)
+    public string TaskName { get; init; } = string.Empty;
+    public string Data { get; init; } = string.Empty;
 }
+
+/// <summary>
+/// Generic request model for creating a new task with strongly-typed data
+/// Provides type safety and better developer experience
+/// </summary>
+public record CreateTaskRequest<T>
+{
+    public string TaskName { get; init; } = string.Empty;
+    public T Data { get; init; } = default!;
+}
+
 
 /// <summary>
 /// Response model for task operations
