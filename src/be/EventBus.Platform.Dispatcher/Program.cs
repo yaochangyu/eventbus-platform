@@ -1,5 +1,4 @@
-﻿using EventBus.Platform.Dispatcher.Repositories;
-using EventBus.Platform.Dispatcher.Services;
+﻿using EventBus.Platform.Dispatcher.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -24,8 +23,13 @@ builder.ConfigureServices((context, services) =>
         logging.SetMinimumLevel(LogLevel.Information);
     });
 
-    services.AddSingleton<IQueueService, InMemoryQueueService>();
-    services.AddSingleton<ITaskRepository, InMemoryTaskRepository>();
+    // HTTP Client for WebAPI communication
+    services.AddHttpClient();
+    
+    // Remove local services - use HTTP API instead
+    // services.AddSingleton<IQueueService, InMemoryQueueService>();
+    // services.AddSingleton<ITaskRepository, InMemoryTaskRepository>();
+    
     services.AddHostedService<MessageDispatcherService>();
     // DemoTaskGenerator removed - use real task creation via API
     // TaskStatusMonitor removed - TaskWorker Console handles task execution
