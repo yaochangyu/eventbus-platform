@@ -1,5 +1,7 @@
 using EventBus.Infrastructure.Queue;
 using EventBus.Infrastructure.TraceContext;
+using EventBus.Platform.WebAPI.Handlers;
+using EventBus.Platform.WebAPI.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EventBus.Platform.WebAPI.Controllers;
@@ -8,7 +10,9 @@ namespace EventBus.Platform.WebAPI.Controllers;
 [Route("api/[controller]")]
 public class QueueController(
     IQueueService queueService,
-    IContextGetter<TraceContext?> traceContextGetter) : ControllerBase
+    IContextGetter<TraceContext?> traceContextGetter,
+    ITaskHandler taskHandler,
+    ILogger<QueueController> logger) : ControllerBase
 {
     [HttpPost("{queueName}/enqueue")]
     public async Task<IActionResult> Enqueue(string queueName, [FromBody] EnqueueRequest request)
@@ -45,42 +49,6 @@ public class QueueController(
         });
     }
 
-    [HttpPost("{queueName}/try-dequeue")]
-    public async Task<IActionResult> TryDequeue(string queueName)
-    {
-        var traceContext = traceContextGetter.GetContext();
-        
-        var result = await queueService.TryDequeueAsync<object>(queueName);
-        
-        return Ok(new
-        {
-            QueueName = queueName,
-            Success = result.Success,
-            Item = result.Item,
-            RemainingCount = queueService.GetCount(queueName),
-            TraceId = traceContext?.TraceId,
-            Timestamp = DateTime.UtcNow
-        });
-    }
-
-    [HttpGet("{queueName}/peek")]
-    public async Task<IActionResult> Peek(string queueName)
-    {
-        var traceContext = traceContextGetter.GetContext();
-        
-        var item = await queueService.PeekAsync<object>(queueName);
-        
-        return Ok(new
-        {
-            QueueName = queueName,
-            Item = item,
-            Found = item != null,
-            QueueCount = queueService.GetCount(queueName),
-            TraceId = traceContext?.TraceId,
-            Timestamp = DateTime.UtcNow
-        });
-    }
-
     [HttpGet("{queueName}/status")]
     public IActionResult GetStatus(string queueName)
     {
@@ -96,110 +64,90 @@ public class QueueController(
         });
     }
 
-    [HttpDelete("{queueName}")]
-    public async Task<IActionResult> Clear(string queueName)
+    /// <summary>
+    /// Dequeue task request and store it in the database
+    /// Used by Message Dispatcher Console to process task requests from queues
+    /// Based on design.md Message Processing flow
+    /// </summary>
+    [HttpPost("dequeue-task")]
+    public async Task<IActionResult> DequeueTask([FromQuery] string queueName = "immediate-tasks")
     {
         var traceContext = traceContextGetter.GetContext();
         
-        var countBeforeClear = queueService.GetCount(queueName);
-        await queueService.ClearAsync(queueName);
-        
-        return Ok(new
+        try
         {
-            QueueName = queueName,
-            ItemsCleared = countBeforeClear,
-            TraceId = traceContext?.TraceId,
-            ClearedAt = DateTime.UtcNow
-        });
-    }
+            // Try to dequeue task request from specified queue
+            var result = await queueService.TryDequeueAsync<CreateTaskRequest>(queueName);
+            
+            if (!result.Success || result.Item == null)
+            {
+                logger.LogDebug("No tasks available in queue: {QueueName} - TraceId: {TraceId}", 
+                    queueName, traceContext?.TraceId);
+                
+                return Ok(new
+                {
+                    QueueName = queueName,
+                    Success = false,
+                    Message = "No tasks available in queue",
+                    RemainingCount = queueService.GetCount(queueName),
+                    TraceId = traceContext?.TraceId,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
 
-    [HttpGet("queues")]
-    public IActionResult GetAllQueues()
-    {
-        var traceContext = traceContextGetter.GetContext();
-        var queueNames = queueService.GetQueueNames().ToList();
-        
-        var queueStatuses = queueNames.Select(name => new
-        {
-            QueueName = name,
-            Count = queueService.GetCount(name),
-            IsEmpty = queueService.IsEmpty(name)
-        }).ToList();
+            var taskRequest = result.Item;
+            logger.LogInformation("Dequeued task request from {QueueName} - TraceId: {TraceId}", 
+                queueName, traceContext?.TraceId);
 
-        return Ok(new
-        {
-            TotalQueues = queueNames.Count,
-            Queues = queueStatuses,
-            TraceId = traceContext?.TraceId,
-            Timestamp = DateTime.UtcNow
-        });
-    }
+            // Store the task in the database
+            var createResult = await taskHandler.CreateTaskAsync(taskRequest);
+            
+            if (!createResult.IsSuccess)
+            {
+                logger.LogError("Failed to store dequeued task in database: {Error} - TraceId: {TraceId}", 
+                    createResult.Failure?.Message, traceContext?.TraceId);
+                
+                // If we fail to store, we should re-enqueue the task to avoid losing it
+                await queueService.EnqueueAsync(taskRequest, queueName);
+                
+                return StatusCode(500, new
+                {
+                    error = "Failed to store task in database",
+                    details = createResult.Failure?.Message,
+                    code = createResult.Failure?.Code,
+                    TraceId = traceContext?.TraceId
+                });
+            }
 
-    [HttpPost("{queueName}/batch-enqueue")]
-    public async Task<IActionResult> BatchEnqueue(string queueName, [FromBody] BatchEnqueueRequest request)
-    {
-        var traceContext = traceContextGetter.GetContext();
-        
-        foreach (var item in request.Items)
-        {
-            await queueService.EnqueueAsync(item, queueName);
+            var task = createResult.Success!;
+            logger.LogInformation("Task stored successfully: {TaskId} with Status: {Status} - TraceId: {TraceId}", 
+                task.Id, task.Status, traceContext?.TraceId);
+
+            return Ok(new
+            {
+                QueueName = queueName,
+                Success = true,
+                TaskId = task.Id,
+                Status = task.Status,
+                CallbackUrl = task.CallbackUrl,
+                ScheduledAt = task.ScheduledAt,
+                RemainingCount = queueService.GetCount(queueName),
+                TraceId = traceContext?.TraceId,
+                DequeuedAt = DateTime.UtcNow
+            });
         }
-        
-        return Ok(new
+        catch (Exception ex)
         {
-            QueueName = queueName,
-            ItemsEnqueued = request.Items.Count,
-            QueueCount = queueService.GetCount(queueName),
-            TraceId = traceContext?.TraceId,
-            EnqueuedAt = DateTime.UtcNow
-        });
-    }
-
-    [HttpPost("{queueName}/test-performance")]
-    public async Task<IActionResult> TestPerformance(string queueName, [FromBody] QueuePerformanceTestRequest request)
-    {
-        var traceContext = traceContextGetter.GetContext();
-        
-        // 清空佇列
-        await queueService.ClearAsync(queueName);
-        
-        // 寫入測試
-        var startTime = DateTime.UtcNow;
-        var enqueueTasks = new List<Task>();
-        
-        for (int i = 0; i < request.ItemCount; i++)
-        {
-            var item = $"perf-test-{i}-{Guid.NewGuid()}";
-            enqueueTasks.Add(queueService.EnqueueAsync(item, queueName));
+            logger.LogError(ex, "Exception in DequeueTask for queue: {QueueName} - TraceId: {TraceId}", 
+                queueName, traceContext?.TraceId);
+            
+            return StatusCode(500, new
+            {
+                error = "Internal server error",
+                code = "InternalError",
+                TraceId = traceContext?.TraceId
+            });
         }
-        
-        await Task.WhenAll(enqueueTasks);
-        var enqueueTime = DateTime.UtcNow - startTime;
-        
-        // 讀取測試
-        startTime = DateTime.UtcNow;
-        var dequeueTasks = new List<Task<object?>>();
-        
-        for (int i = 0; i < request.ItemCount; i++)
-        {
-            dequeueTasks.Add(queueService.DequeueAsync<object>(queueName));
-        }
-        
-        await Task.WhenAll(dequeueTasks);
-        var dequeueTime = DateTime.UtcNow - startTime;
-        
-        return Ok(new
-        {
-            QueueName = queueName,
-            ItemCount = request.ItemCount,
-            EnqueueTimeMs = enqueueTime.TotalMilliseconds,
-            DequeueTimeMs = dequeueTime.TotalMilliseconds,
-            AvgEnqueueTimeMs = enqueueTime.TotalMilliseconds / request.ItemCount,
-            AvgDequeueTimeMs = dequeueTime.TotalMilliseconds / request.ItemCount,
-            RemainingCount = queueService.GetCount(queueName),
-            TraceId = traceContext?.TraceId,
-            Timestamp = DateTime.UtcNow
-        });
     }
 }
 
@@ -208,12 +156,3 @@ public record EnqueueRequest
     public object Item { get; init; } = string.Empty;
 }
 
-public record BatchEnqueueRequest
-{
-    public List<object> Items { get; init; } = new();
-}
-
-public record QueuePerformanceTestRequest
-{
-    public int ItemCount { get; init; } = 100;
-}

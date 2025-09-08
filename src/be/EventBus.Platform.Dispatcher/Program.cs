@@ -30,7 +30,7 @@ builder.ConfigureServices((context, services) =>
     // services.AddSingleton<IQueueService, InMemoryQueueService>();
     // services.AddSingleton<ITaskRepository, InMemoryTaskRepository>();
     
-    services.AddHostedService<MessageDispatcherService>();
+    services.AddHostedService<DispatcherService>();
     // DemoTaskGenerator removed - use real task creation via API
     // TaskStatusMonitor removed - TaskWorker Console handles task execution
 });
