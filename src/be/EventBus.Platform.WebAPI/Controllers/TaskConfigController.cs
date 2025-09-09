@@ -43,26 +43,7 @@ public class TaskConfigController(
 
         var result = await taskConfigHandler.CreateTaskConfigAsync(request, cancellationToken);
 
-        // 轉換為 Response 物件
-        var responseResult = result.IsSuccess 
-            ? Result<TaskConfigResponse, Failure>.Ok(new TaskConfigResponse
-            {
-                TaskName = result.Success!.TaskName,
-                CallbackUrl = result.Success.CallbackUrl,
-                Method = result.Success.Method,
-                Headers = result.Success.Headers,
-                MaxRetries = result.Success.MaxRetries,
-                TimeoutSeconds = result.Success.TimeoutSeconds,
-                IsActive = result.Success.IsActive,
-                CreatedAt = result.Success.CreatedAt,
-                UpdatedAt = result.Success.UpdatedAt,
-                DefaultDelay = result.Success.DefaultDelay,
-                AllowScheduling = result.Success.AllowScheduling,
-                DefaultCronExpression = result.Success.DefaultCronExpression
-            })
-            : Result<TaskConfigResponse, Failure>.Fail(result.Failure!);
-
-        return responseResult.ToCreatedActionResult($"/api/task-configs/{request.TaskName}");
+        return result.ToCreatedActionResult($"/api/task-configs/{request.TaskName}");
     }
 
     /// <summary>
@@ -79,26 +60,7 @@ public class TaskConfigController(
 
         var result = await taskConfigHandler.GetTaskConfigAsync(taskName, cancellationToken);
 
-        // 轉換為 Response 物件
-        var responseResult = result.IsSuccess 
-            ? Result<TaskConfigResponse, Failure>.Ok(new TaskConfigResponse
-            {
-                TaskName = result.Success!.TaskName,
-                CallbackUrl = result.Success.CallbackUrl,
-                Method = result.Success.Method,
-                Headers = result.Success.Headers,
-                MaxRetries = result.Success.MaxRetries,
-                TimeoutSeconds = result.Success.TimeoutSeconds,
-                IsActive = result.Success.IsActive,
-                CreatedAt = result.Success.CreatedAt,
-                UpdatedAt = result.Success.UpdatedAt,
-                DefaultDelay = result.Success.DefaultDelay,
-                AllowScheduling = result.Success.AllowScheduling,
-                DefaultCronExpression = result.Success.DefaultCronExpression
-            })
-            : Result<TaskConfigResponse, Failure>.Fail(result.Failure!);
-
-        return responseResult.ToActionResult();
+        return result.ToActionResult();
     }
 
     /// <summary>
@@ -117,7 +79,7 @@ public class TaskConfigController(
         }
 
         // Validate CallbackUrl if provided
-        if (!string.IsNullOrWhiteSpace(request.CallbackUrl) && 
+        if (!string.IsNullOrWhiteSpace(request.CallbackUrl) &&
             !Uri.TryCreate(request.CallbackUrl, UriKind.Absolute, out _))
         {
             var validationFailure = new Failure(nameof(FailureCode.ValidationError), "CallbackUrl must be a valid URL");
@@ -126,26 +88,7 @@ public class TaskConfigController(
 
         var result = await taskConfigHandler.UpdateTaskConfigAsync(taskName, request, cancellationToken);
 
-        // 轉換為 Response 物件
-        var responseResult = result.IsSuccess 
-            ? Result<TaskConfigResponse, Failure>.Ok(new TaskConfigResponse
-            {
-                TaskName = result.Success!.TaskName,
-                CallbackUrl = result.Success.CallbackUrl,
-                Method = result.Success.Method,
-                Headers = result.Success.Headers,
-                MaxRetries = result.Success.MaxRetries,
-                TimeoutSeconds = result.Success.TimeoutSeconds,
-                IsActive = result.Success.IsActive,
-                CreatedAt = result.Success.CreatedAt,
-                UpdatedAt = result.Success.UpdatedAt,
-                DefaultDelay = result.Success.DefaultDelay,
-                AllowScheduling = result.Success.AllowScheduling,
-                DefaultCronExpression = result.Success.DefaultCronExpression
-            })
-            : Result<TaskConfigResponse, Failure>.Fail(result.Failure!);
-
-        return responseResult.ToActionResult();
+        return result.ToActionResult();
     }
 
     /// <summary>
@@ -173,29 +116,6 @@ public class TaskConfigController(
     {
         var result = await taskConfigHandler.GetAllTaskConfigsAsync(cancellationToken);
 
-        // 轉換為 Response 物件
-        var responseResult = result.IsSuccess 
-            ? Result<object, Failure>.Ok(new
-            {
-                taskConfigs = result.Success!.Select(taskConfig => new TaskConfigResponse
-                {
-                    TaskName = taskConfig.TaskName,
-                    CallbackUrl = taskConfig.CallbackUrl,
-                    Method = taskConfig.Method,
-                    Headers = taskConfig.Headers,
-                    MaxRetries = taskConfig.MaxRetries,
-                    TimeoutSeconds = taskConfig.TimeoutSeconds,
-                    IsActive = taskConfig.IsActive,
-                    CreatedAt = taskConfig.CreatedAt,
-                    UpdatedAt = taskConfig.UpdatedAt,
-                    DefaultDelay = taskConfig.DefaultDelay,
-                    AllowScheduling = taskConfig.AllowScheduling,
-                    DefaultCronExpression = taskConfig.DefaultCronExpression
-                }).ToList(),
-                count = result.Success.Count()
-            })
-            : Result<object, Failure>.Fail(result.Failure!);
-
-        return responseResult.ToActionResult();
+        return result.ToActionResult();
     }
 }
