@@ -27,8 +27,12 @@ public class TaskHandler(
                 TaskName = request.TaskName,
             };
 
-            await queueService.EnqueueAsync(request.Data, request.TaskName, cancellationToken);
-
+            var enqueueResult = await queueService.EnqueueAsync(request.Data, request.TaskName, cancellationToken);
+            if (enqueueResult.IsSuccess == false)
+            {
+                return Result<TaskEntity, Failure>.Fail(enqueueResult.Failure!);
+            }
+            
             var result = await taskRepository.CreateAsync(taskEntity, cancellationToken);
 
             if (result.IsSuccess)

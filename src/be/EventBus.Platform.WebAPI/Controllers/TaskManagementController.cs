@@ -105,38 +105,7 @@ public class TaskManagementController(
         }
 
         var result = await taskHandler.UpdateTaskStatusAsync(taskId, request.Status, request.ErrorMessage, cancellationToken);
-
-        // 轉換為統一的 Result 回應
-        var responseResult = result.IsSuccess
-            ? Result<TaskResponse, Failure>.Ok(new TaskResponse
-            {
-                Id = result.Success!.Id,
-                Status = result.Success.Status,
-                CreatedAt = result.Success.CreatedAt,
-                StartedAt = result.Success.StartedAt,
-                CompletedAt = result.Success.CompletedAt,
-                RetryCount = result.Success.RetryCount,
-                ErrorMessage = result.Success.ErrorMessage,
-                TraceId = result.Success.TraceId,
-                CallbackUrl = result.Success.CallbackUrl,
-                Method = result.Success.Method,
-                RequestPayload = result.Success.RequestPayload,
-                Headers = result.Success.Headers,
-                MaxRetries = result.Success.MaxRetries,
-                TimeoutSeconds = result.Success.TimeoutSeconds,
-                EventId = result.Success.EventId,
-                SubscriberId = result.Success.SubscriberId
-            })
-            : Result<TaskResponse, Failure>.Fail(result.Failure!);
-
-        if (responseResult.IsSuccess)
-        {
-            logger.LogInformation("Task status updated: {TaskId} -> {Status} - TraceId: {TraceId}",
-                taskId, request.Status, responseResult.Success!.TraceId);
-        }
-
-        return responseResult.ToActionResult();
-
+        return result.ToActionResult();
     }
 
     /// <summary>
