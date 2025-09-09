@@ -6,6 +6,7 @@ using EventBus.Platform.WebAPI.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using System.Text.Json.Serialization;
+using EventBus.Infrastructure;
 
 // Configure Serilog with structured logging
 Log.Logger = new LoggerConfiguration()
@@ -67,6 +68,9 @@ builder.Services.AddInfrastructure();
 // Add Repository services
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.IEventRepository, EventBus.Platform.WebAPI.Repositories.EventRepository>();
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Repositories.ITaskRepository, EventBus.Platform.WebAPI.Repositories.TaskRepository>();
+
+// Add Service utilities
+builder.Services.AddSingleton<IIdGenerator, GuidIdGenerator>();
 
 // Add Handler services
 builder.Services.AddScoped<EventBus.Platform.WebAPI.Handlers.ITaskHandler, EventBus.Platform.WebAPI.Handlers.TaskHandler>();
