@@ -43,7 +43,8 @@ public class TaskConfigController(
 
             if (!result.IsSuccess)
             {
-                logger.LogWarning("Failed to create task config: {TaskName} - {Error}", request.TaskName, result.Failure?.Message);
+                logger.LogError("Failed to create task config: {TaskName} - {Error} - Exception: {Exception}", 
+                    request.TaskName, result.Failure?.Message, result.Failure?.Exception);
                 return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
             }
 
@@ -234,7 +235,8 @@ public class TaskConfigController(
 
             if (!result.IsSuccess)
             {
-                logger.LogWarning("Failed to get task configs: {Error}", result.Failure?.Message);
+                logger.LogError("Failed to get task configs: {Error} - Exception: {Exception}", 
+                    result.Failure?.Message, result.Failure?.Exception);
                 return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
             }
 

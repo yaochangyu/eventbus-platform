@@ -4,7 +4,7 @@ using EventBus.Infrastructure.Models;
 
 namespace EventBus.Infrastructure.Queue;
 
-public class ConcurrentQueueService<T>(ILogger<ConcurrentQueueService<T>> logger) : IQueueProvider<T>
+public class ConcurrentQueueProvider<T>(ILogger<ConcurrentQueueProvider<T>> logger) : IQueueProvider<T>
 {
     private readonly ConcurrentQueue<T> _queue = new();
     private int _count = 0;
@@ -125,8 +125,8 @@ public class ConcurrentQueueService(ILogger<ConcurrentQueueService> logger) : IQ
         return (IQueueProvider<T>)_queues.GetOrAdd(queueName, _ =>
         {
             // 使用 NullLogger 避免依賴問題
-            var queueLogger = Microsoft.Extensions.Logging.Abstractions.NullLogger<ConcurrentQueueService<T>>.Instance;
-            return new ConcurrentQueueService<T>(queueLogger);
+            var queueLogger = Microsoft.Extensions.Logging.Abstractions.NullLogger<ConcurrentQueueProvider<T>>.Instance;
+            return new ConcurrentQueueProvider<T>(queueLogger);
         });
     }
 

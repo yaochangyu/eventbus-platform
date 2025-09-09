@@ -5,7 +5,7 @@ using EventBus.Infrastructure.Models;
 
 namespace EventBus.Infrastructure.Queue;
 
-public class ChannelQueueService<T>(ILogger<ChannelQueueService<T>> logger, int capacity = 1000) : IQueueProvider<T>
+public class ChannelQueueProvider<T>(ILogger<ChannelQueueProvider<T>> logger, int capacity = 1000) : IQueueProvider<T>
 {
     private readonly Channel<T> _channel = Channel.CreateBounded<T>(new BoundedChannelOptions(capacity)
     {
@@ -128,8 +128,8 @@ public class ChannelQueueService(ILogger<ChannelQueueService> logger) : IQueuePr
         {
             _queueCapacities.TryAdd(queueName, capacity);
             // 使用 NullLogger 避免依賴問題
-            var queueLogger = Microsoft.Extensions.Logging.Abstractions.NullLogger<ChannelQueueService<T>>.Instance;
-            return new ChannelQueueService<T>(queueLogger, capacity);
+            var queueLogger = Microsoft.Extensions.Logging.Abstractions.NullLogger<ChannelQueueProvider<T>>.Instance;
+            return new ChannelQueueProvider<T>(queueLogger, capacity);
         });
     }
 

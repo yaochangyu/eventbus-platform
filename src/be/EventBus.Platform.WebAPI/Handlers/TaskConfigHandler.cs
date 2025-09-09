@@ -53,7 +53,6 @@ public class TaskConfigHandler : ITaskConfigHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create task configuration: {TaskName}", request.TaskName);
             return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.CreateConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
@@ -96,7 +95,6 @@ public class TaskConfigHandler : ITaskConfigHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create task configuration (generic): {TaskName}", request.TaskName);
             return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.CreateConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
@@ -114,7 +112,6 @@ public class TaskConfigHandler : ITaskConfigHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get task configuration: {TaskName}", taskName);
             return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.GetConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
@@ -150,7 +147,6 @@ public class TaskConfigHandler : ITaskConfigHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to update task configuration: {TaskName}", taskName);
             return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.UpdateConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
@@ -172,7 +168,6 @@ public class TaskConfigHandler : ITaskConfigHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to delete task configuration: {TaskName}", taskName);
             return Result<bool, Failure>.Fail(new Failure(FailureCode.DeleteConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
@@ -189,7 +184,6 @@ public class TaskConfigHandler : ITaskConfigHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get all task configurations");
             return Result<List<TaskConfig>, Failure>.Fail(new Failure(FailureCode.GetAllConfigsFailed.ToString(), ex.Message) { Exception = ex });
         }
     }

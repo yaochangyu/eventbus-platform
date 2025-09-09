@@ -24,6 +24,8 @@ public class QueueController(
         
         if (!enqueueResult.IsSuccess)
         {
+            logger.LogError("Failed to enqueue item to queue {QueueName}: {Error} - Exception: {Exception}", 
+                queueName, enqueueResult.Failure?.Message, enqueueResult.Failure?.Exception);
             return BadRequest(new 
             {
                 Error = enqueueResult.Failure?.Message,
@@ -50,6 +52,8 @@ public class QueueController(
         
         if (!dequeueResult.IsSuccess)
         {
+            logger.LogError("Failed to dequeue item from queue {QueueName}: {Error} - Exception: {Exception}", 
+                queueName, dequeueResult.Failure?.Message, dequeueResult.Failure?.Exception);
             return BadRequest(new 
             {
                 Error = dequeueResult.Failure?.Message,

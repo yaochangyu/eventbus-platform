@@ -37,6 +37,8 @@ public class TaskManagementController(
             });
         }
 
+        logger.LogError("Failed to create task: {TaskName} - Error: {Error} - Exception: {Exception}", 
+            request.TaskName, result.Failure?.Message, result.Failure?.Exception);
         return new ObjectResult(result.Failure)
         {
             StatusCode = 500
@@ -62,7 +64,8 @@ public class TaskManagementController(
 
             if (!result.IsSuccess)
             {
-                logger.LogWarning("Failed to get pending tasks: {Error}", result.Failure?.Message);
+                logger.LogError("Failed to get pending tasks: {Error} - Exception: {Exception}", 
+                    result.Failure?.Message, result.Failure?.Exception);
                 return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
             }
 
@@ -126,7 +129,8 @@ public class TaskManagementController(
 
             if (!result.IsSuccess)
             {
-                logger.LogWarning("Failed to get scheduled tasks: {Error}", result.Failure?.Message);
+                logger.LogError("Failed to get scheduled tasks: {Error} - Exception: {Exception}", 
+                    result.Failure?.Message, result.Failure?.Exception);
                 return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
             }
 
@@ -342,8 +346,8 @@ public class TaskManagementController(
 
             if (!result.IsSuccess)
             {
-                logger.LogWarning("Failed to store task: {TaskName} - {Error}", request.TaskName,
-                    result.Failure?.Message);
+                logger.LogError("Failed to store task: {TaskName} - {Error} - Exception: {Exception}", 
+                    request.TaskName, result.Failure?.Message, result.Failure?.Exception);
                 return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
             }
 
