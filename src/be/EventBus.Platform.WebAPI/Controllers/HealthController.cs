@@ -1,4 +1,5 @@
 using EventBus.Infrastructure.TraceContext;
+using EventBus.Infrastructure.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EventBus.Platform.WebAPI.Controllers;
@@ -12,7 +13,7 @@ public class HealthController(IContextGetter<TraceContext?> traceContextGetter) 
     {
         var traceContext = traceContextGetter.GetContext();
         
-        return Ok(new
+        var result = Result<object, Failure>.Ok(new
         {
             Status = "Healthy",
             Timestamp = DateTime.UtcNow,
@@ -20,16 +21,20 @@ public class HealthController(IContextGetter<TraceContext?> traceContextGetter) 
             TraceId = traceContext?.TraceId,
             UserId = traceContext?.UserId
         });
+        
+        return result.ToActionResult();
     }
 
     [HttpGet("version")]
     public IActionResult GetVersion()
     {
-        return Ok(new
+        var result = Result<object, Failure>.Ok(new
         {
             Version = "1.0.0-MVP",
             Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
             Framework = ".NET 9.0"
         });
+        
+        return result.ToActionResult();
     }
 }

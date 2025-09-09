@@ -1,3 +1,4 @@
+using EventBus.Infrastructure.Models;
 using EventBus.Platform.WebAPI.Handlers;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,59 +22,47 @@ public class TaskConfigController(
         [FromBody] CreateTaskConfigRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
+        // Validate request
+        if (string.IsNullOrWhiteSpace(request.TaskName))
         {
-            // Validate request
-            if (string.IsNullOrWhiteSpace(request.TaskName))
-            {
-                return BadRequest(new { error = "TaskName is required", code = "ValidationError" });
-            }
-
-            if (string.IsNullOrWhiteSpace(request.CallbackUrl))
-            {
-                return BadRequest(new { error = "CallbackUrl is required", code = "ValidationError" });
-            }
-
-            if (!Uri.TryCreate(request.CallbackUrl, UriKind.Absolute, out _))
-            {
-                return BadRequest(new { error = "CallbackUrl must be a valid URL", code = "ValidationError" });
-            }
-
-            var result = await taskConfigHandler.CreateTaskConfigAsync(request, cancellationToken);
-
-            if (!result.IsSuccess)
-            {
-                logger.LogError("Failed to create task config: {TaskName} - {Error} - Exception: {Exception}", 
-                    request.TaskName, result.Failure?.Message, result.Failure?.Exception);
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
-            }
-
-            var taskConfig = result.Success!;
-            var response = new TaskConfigResponse
-            {
-                TaskName = taskConfig.TaskName,
-                CallbackUrl = taskConfig.CallbackUrl,
-                Method = taskConfig.Method,
-                Headers = taskConfig.Headers,
-                MaxRetries = taskConfig.MaxRetries,
-                TimeoutSeconds = taskConfig.TimeoutSeconds,
-                IsActive = taskConfig.IsActive,
-                CreatedAt = taskConfig.CreatedAt,
-                UpdatedAt = taskConfig.UpdatedAt,
-                DefaultDelay = taskConfig.DefaultDelay,
-                AllowScheduling = taskConfig.AllowScheduling,
-                DefaultCronExpression = taskConfig.DefaultCronExpression
-            };
-
-            logger.LogInformation("Task config created successfully: {TaskName}", request.TaskName);
-
-            return Created($"/api/task-configs/{taskConfig.TaskName}", response);
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "TaskName is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
         }
-        catch (Exception ex)
+
+        if (string.IsNullOrWhiteSpace(request.CallbackUrl))
         {
-            logger.LogError(ex, "Exception in CreateTaskConfigAsync: {TaskName}", request.TaskName);
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "CallbackUrl is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
         }
+
+        if (!Uri.TryCreate(request.CallbackUrl, UriKind.Absolute, out _))
+        {
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "CallbackUrl must be a valid URL");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
+        }
+
+        var result = await taskConfigHandler.CreateTaskConfigAsync(request, cancellationToken);
+
+        // 轉換為 Response 物件
+        var responseResult = result.IsSuccess 
+            ? Result<TaskConfigResponse, Failure>.Ok(new TaskConfigResponse
+            {
+                TaskName = result.Success!.TaskName,
+                CallbackUrl = result.Success.CallbackUrl,
+                Method = result.Success.Method,
+                Headers = result.Success.Headers,
+                MaxRetries = result.Success.MaxRetries,
+                TimeoutSeconds = result.Success.TimeoutSeconds,
+                IsActive = result.Success.IsActive,
+                CreatedAt = result.Success.CreatedAt,
+                UpdatedAt = result.Success.UpdatedAt,
+                DefaultDelay = result.Success.DefaultDelay,
+                AllowScheduling = result.Success.AllowScheduling,
+                DefaultCronExpression = result.Success.DefaultCronExpression
+            })
+            : Result<TaskConfigResponse, Failure>.Fail(result.Failure!);
+
+        return responseResult.ToCreatedActionResult($"/api/task-configs/{request.TaskName}");
     }
 
     /// <summary>
@@ -82,48 +71,34 @@ public class TaskConfigController(
     [HttpGet("{taskName}")]
     public async Task<IActionResult> GetTaskConfigAsync(string taskName, CancellationToken cancellationToken = default)
     {
-        try
+        if (string.IsNullOrWhiteSpace(taskName))
         {
-            if (string.IsNullOrWhiteSpace(taskName))
-            {
-                return BadRequest(new { error = "Task name is required", code = "ValidationError" });
-            }
-
-            var result = await taskConfigHandler.GetTaskConfigAsync(taskName, cancellationToken);
-
-            if (!result.IsSuccess)
-            {
-                if (result.Failure?.Code == "NotFound")
-                {
-                    return NotFound(new { error = result.Failure?.Message });
-                }
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
-            }
-
-            var taskConfig = result.Success!;
-            var response = new TaskConfigResponse
-            {
-                TaskName = taskConfig.TaskName,
-                CallbackUrl = taskConfig.CallbackUrl,
-                Method = taskConfig.Method,
-                Headers = taskConfig.Headers,
-                MaxRetries = taskConfig.MaxRetries,
-                TimeoutSeconds = taskConfig.TimeoutSeconds,
-                IsActive = taskConfig.IsActive,
-                CreatedAt = taskConfig.CreatedAt,
-                UpdatedAt = taskConfig.UpdatedAt,
-                DefaultDelay = taskConfig.DefaultDelay,
-                AllowScheduling = taskConfig.AllowScheduling,
-                DefaultCronExpression = taskConfig.DefaultCronExpression
-            };
-
-            return Ok(response);
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Task name is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
         }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Exception in GetTaskConfigAsync: {TaskName}", taskName);
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
-        }
+
+        var result = await taskConfigHandler.GetTaskConfigAsync(taskName, cancellationToken);
+
+        // 轉換為 Response 物件
+        var responseResult = result.IsSuccess 
+            ? Result<TaskConfigResponse, Failure>.Ok(new TaskConfigResponse
+            {
+                TaskName = result.Success!.TaskName,
+                CallbackUrl = result.Success.CallbackUrl,
+                Method = result.Success.Method,
+                Headers = result.Success.Headers,
+                MaxRetries = result.Success.MaxRetries,
+                TimeoutSeconds = result.Success.TimeoutSeconds,
+                IsActive = result.Success.IsActive,
+                CreatedAt = result.Success.CreatedAt,
+                UpdatedAt = result.Success.UpdatedAt,
+                DefaultDelay = result.Success.DefaultDelay,
+                AllowScheduling = result.Success.AllowScheduling,
+                DefaultCronExpression = result.Success.DefaultCronExpression
+            })
+            : Result<TaskConfigResponse, Failure>.Fail(result.Failure!);
+
+        return responseResult.ToActionResult();
     }
 
     /// <summary>
@@ -135,57 +110,42 @@ public class TaskConfigController(
         [FromBody] UpdateTaskConfigRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
+        if (string.IsNullOrWhiteSpace(taskName))
         {
-            if (string.IsNullOrWhiteSpace(taskName))
-            {
-                return BadRequest(new { error = "Task name is required", code = "ValidationError" });
-            }
-
-            // Validate CallbackUrl if provided
-            if (!string.IsNullOrWhiteSpace(request.CallbackUrl) && 
-                !Uri.TryCreate(request.CallbackUrl, UriKind.Absolute, out _))
-            {
-                return BadRequest(new { error = "CallbackUrl must be a valid URL", code = "ValidationError" });
-            }
-
-            var result = await taskConfigHandler.UpdateTaskConfigAsync(taskName, request, cancellationToken);
-
-            if (!result.IsSuccess)
-            {
-                if (result.Failure?.Code == "NotFound")
-                {
-                    return NotFound(new { error = result.Failure?.Message });
-                }
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
-            }
-
-            var taskConfig = result.Success!;
-            var response = new TaskConfigResponse
-            {
-                TaskName = taskConfig.TaskName,
-                CallbackUrl = taskConfig.CallbackUrl,
-                Method = taskConfig.Method,
-                Headers = taskConfig.Headers,
-                MaxRetries = taskConfig.MaxRetries,
-                TimeoutSeconds = taskConfig.TimeoutSeconds,
-                IsActive = taskConfig.IsActive,
-                CreatedAt = taskConfig.CreatedAt,
-                UpdatedAt = taskConfig.UpdatedAt,
-                DefaultDelay = taskConfig.DefaultDelay,
-                AllowScheduling = taskConfig.AllowScheduling,
-                DefaultCronExpression = taskConfig.DefaultCronExpression
-            };
-
-            logger.LogInformation("Task config updated successfully: {TaskName}", taskName);
-
-            return Ok(response);
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Task name is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
         }
-        catch (Exception ex)
+
+        // Validate CallbackUrl if provided
+        if (!string.IsNullOrWhiteSpace(request.CallbackUrl) && 
+            !Uri.TryCreate(request.CallbackUrl, UriKind.Absolute, out _))
         {
-            logger.LogError(ex, "Exception in UpdateTaskConfigAsync: {TaskName}", taskName);
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "CallbackUrl must be a valid URL");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
         }
+
+        var result = await taskConfigHandler.UpdateTaskConfigAsync(taskName, request, cancellationToken);
+
+        // 轉換為 Response 物件
+        var responseResult = result.IsSuccess 
+            ? Result<TaskConfigResponse, Failure>.Ok(new TaskConfigResponse
+            {
+                TaskName = result.Success!.TaskName,
+                CallbackUrl = result.Success.CallbackUrl,
+                Method = result.Success.Method,
+                Headers = result.Success.Headers,
+                MaxRetries = result.Success.MaxRetries,
+                TimeoutSeconds = result.Success.TimeoutSeconds,
+                IsActive = result.Success.IsActive,
+                CreatedAt = result.Success.CreatedAt,
+                UpdatedAt = result.Success.UpdatedAt,
+                DefaultDelay = result.Success.DefaultDelay,
+                AllowScheduling = result.Success.AllowScheduling,
+                DefaultCronExpression = result.Success.DefaultCronExpression
+            })
+            : Result<TaskConfigResponse, Failure>.Fail(result.Failure!);
+
+        return responseResult.ToActionResult();
     }
 
     /// <summary>
@@ -194,33 +154,15 @@ public class TaskConfigController(
     [HttpDelete("{taskName}")]
     public async Task<IActionResult> DeleteTaskConfigAsync(string taskName, CancellationToken cancellationToken = default)
     {
-        try
+        if (string.IsNullOrWhiteSpace(taskName))
         {
-            if (string.IsNullOrWhiteSpace(taskName))
-            {
-                return BadRequest(new { error = "Task name is required", code = "ValidationError" });
-            }
-
-            var result = await taskConfigHandler.DeleteTaskConfigAsync(taskName, cancellationToken);
-
-            if (!result.IsSuccess)
-            {
-                if (result.Failure?.Code == "NotFound")
-                {
-                    return NotFound(new { error = result.Failure?.Message });
-                }
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
-            }
-
-            logger.LogInformation("Task config deleted successfully: {TaskName}", taskName);
-
-            return NoContent();
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Task name is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
         }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Exception in DeleteTaskConfigAsync: {TaskName}", taskName);
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
-        }
+
+        var result = await taskConfigHandler.DeleteTaskConfigAsync(taskName, cancellationToken);
+
+        return result.ToNoContentActionResult();
     }
 
     /// <summary>
@@ -229,46 +171,31 @@ public class TaskConfigController(
     [HttpGet]
     public async Task<IActionResult> GetAllTaskConfigsAsync(CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var result = await taskConfigHandler.GetAllTaskConfigsAsync(cancellationToken);
+        var result = await taskConfigHandler.GetAllTaskConfigsAsync(cancellationToken);
 
-            if (!result.IsSuccess)
+        // 轉換為 Response 物件
+        var responseResult = result.IsSuccess 
+            ? Result<object, Failure>.Ok(new
             {
-                logger.LogError("Failed to get task configs: {Error} - Exception: {Exception}", 
-                    result.Failure?.Message, result.Failure?.Exception);
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
-            }
+                taskConfigs = result.Success!.Select(taskConfig => new TaskConfigResponse
+                {
+                    TaskName = taskConfig.TaskName,
+                    CallbackUrl = taskConfig.CallbackUrl,
+                    Method = taskConfig.Method,
+                    Headers = taskConfig.Headers,
+                    MaxRetries = taskConfig.MaxRetries,
+                    TimeoutSeconds = taskConfig.TimeoutSeconds,
+                    IsActive = taskConfig.IsActive,
+                    CreatedAt = taskConfig.CreatedAt,
+                    UpdatedAt = taskConfig.UpdatedAt,
+                    DefaultDelay = taskConfig.DefaultDelay,
+                    AllowScheduling = taskConfig.AllowScheduling,
+                    DefaultCronExpression = taskConfig.DefaultCronExpression
+                }).ToList(),
+                count = result.Success.Count()
+            })
+            : Result<object, Failure>.Fail(result.Failure!);
 
-            var taskConfigs = result.Success!;
-            var responses = taskConfigs.Select(taskConfig => new TaskConfigResponse
-            {
-                TaskName = taskConfig.TaskName,
-                CallbackUrl = taskConfig.CallbackUrl,
-                Method = taskConfig.Method,
-                Headers = taskConfig.Headers,
-                MaxRetries = taskConfig.MaxRetries,
-                TimeoutSeconds = taskConfig.TimeoutSeconds,
-                IsActive = taskConfig.IsActive,
-                CreatedAt = taskConfig.CreatedAt,
-                UpdatedAt = taskConfig.UpdatedAt,
-                DefaultDelay = taskConfig.DefaultDelay,
-                AllowScheduling = taskConfig.AllowScheduling,
-                DefaultCronExpression = taskConfig.DefaultCronExpression
-            }).ToList();
-
-            logger.LogInformation("Retrieved {Count} task configurations", responses.Count);
-
-            return Ok(new
-            {
-                taskConfigs = responses,
-                count = responses.Count
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Exception in GetAllTaskConfigsAsync");
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
-        }
+        return responseResult.ToActionResult();
     }
 }

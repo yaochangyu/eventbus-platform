@@ -20,29 +20,26 @@ public class TaskManagementController(
         [FromBody] CreateTaskRequest request,
         CancellationToken cancellationToken = default)
     {
-        // Validate request
+        // 驗證請求參數
         if (string.IsNullOrWhiteSpace(request.TaskName))
         {
-            return BadRequest(new { error = "TaskName is required", code = "ValidationError" });
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "TaskName is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
         }
 
-        var result = await taskHandler.CreateTaskAsync(request, cancellationToken); // Fire and forget
-        if (result.IsSuccess)
-        {
-            return Accepted(new
+        var result = await taskHandler.CreateTaskAsync(request, cancellationToken);
+        
+        // 轉換為統一的 Result 回應
+        var responseResult = result.IsSuccess 
+            ? Result<object, Failure>.Ok(new
             {
                 Task = result.Success,
                 request.TaskName,
                 Type = "Immediate"
-            });
-        }
+            })
+            : Result<object, Failure>.Fail(result.Failure!);
 
-        logger.LogError("Failed to create task: {TaskName} - Error: {Error} - Exception: {Exception}", 
-            request.TaskName, result.Failure?.Message, result.Failure?.Exception);
-        return new ObjectResult(result.Failure)
-        {
-            StatusCode = 500
-        };
+        return responseResult.ToAcceptedActionResult();
     }
 
     /// <summary>
@@ -55,55 +52,59 @@ public class TaskManagementController(
     {
         try
         {
+            // 驗證請求參數
             if (limit < 1 || limit > 100)
             {
-                return BadRequest(new { error = "Limit must be between 1 and 100", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Limit must be between 1 and 100");
+                return Result<object, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             var result = await taskHandler.GetPendingTasksAsync(limit, cancellationToken);
 
-            if (!result.IsSuccess)
+            // 轉換為統一的 Result 回應
+            var responseResult = result.IsSuccess
+                ? Result<object, Failure>.Ok(new
+                {
+                    tasks = result.Success!.Select(task => new TaskResponse
+                    {
+                        Id = task.Id,
+                        Status = task.Status,
+                        CreatedAt = task.CreatedAt,
+                        StartedAt = task.StartedAt,
+                        CompletedAt = task.CompletedAt,
+                        RetryCount = task.RetryCount,
+                        ErrorMessage = task.ErrorMessage,
+                        TraceId = task.TraceId,
+                        CallbackUrl = task.CallbackUrl,
+                        Method = task.Method,
+                        RequestPayload = task.RequestPayload,
+                        Headers = task.Headers,
+                        MaxRetries = task.MaxRetries,
+                        TimeoutSeconds = task.TimeoutSeconds,
+                        EventId = task.EventId,
+                        SubscriberId = task.SubscriberId
+                    }).ToList(),
+                    count = result.Success!.Count(),
+                    limit
+                })
+                : Result<object, Failure>.Fail(result.Failure!);
+
+            if (responseResult.IsSuccess)
             {
-                logger.LogError("Failed to get pending tasks: {Error} - Exception: {Exception}", 
-                    result.Failure?.Message, result.Failure?.Exception);
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
+                var tasksList = result.Success!.ToList();
+                logger.LogInformation("Retrieved {Count} pending tasks", tasksList.Count);
             }
 
-            var tasks = result.Success!;
-            var responses = tasks.Select(task => new TaskResponse
-            {
-                Id = task.Id,
-                Status = task.Status,
-                CreatedAt = task.CreatedAt,
-                StartedAt = task.StartedAt,
-                CompletedAt = task.CompletedAt,
-                RetryCount = task.RetryCount,
-                ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId,
-                // Execution details for TaskWorkerService
-                CallbackUrl = task.CallbackUrl,
-                Method = task.Method,
-                RequestPayload = task.RequestPayload,
-                Headers = task.Headers,
-                MaxRetries = task.MaxRetries,
-                TimeoutSeconds = task.TimeoutSeconds,
-                EventId = task.EventId,
-                SubscriberId = task.SubscriberId
-            }).ToList();
-
-            logger.LogInformation("Retrieved {Count} pending tasks", responses.Count);
-
-            return Ok(new
-            {
-                tasks = responses,
-                count = responses.Count,
-                limit
-            });
+            return responseResult.ToActionResult();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Exception in GetPendingTasksAsync");
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+            var internalErrorFailure = new Failure(nameof(FailureCode.InternalServerError), "Internal server error")
+            {
+                Exception = ex
+            };
+            
+            return Result<object, Failure>.Fail(internalErrorFailure).ToActionResult();
         }
     }
 
@@ -119,58 +120,62 @@ public class TaskManagementController(
     {
         try
         {
+            // 驗證請求參數
             if (limit < 1 || limit > 100)
             {
-                return BadRequest(new { error = "Limit must be between 1 and 100", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Limit must be between 1 and 100");
+                return Result<object, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             var result =
                 await taskHandler.GetScheduledTasksReadyForExecutionAsync(currentTime, limit, cancellationToken);
 
-            if (!result.IsSuccess)
+            // 轉換為統一的 Result 回應
+            var responseResult = result.IsSuccess
+                ? Result<object, Failure>.Ok(new
+                {
+                    tasks = result.Success!.Select(task => new TaskResponse
+                    {
+                        Id = task.Id,
+                        Status = task.Status,
+                        CreatedAt = task.CreatedAt,
+                        StartedAt = task.StartedAt,
+                        CompletedAt = task.CompletedAt,
+                        RetryCount = task.RetryCount,
+                        ErrorMessage = task.ErrorMessage,
+                        TraceId = task.TraceId,
+                        CallbackUrl = task.CallbackUrl,
+                        Method = task.Method,
+                        RequestPayload = task.RequestPayload,
+                        Headers = task.Headers,
+                        MaxRetries = task.MaxRetries,
+                        TimeoutSeconds = task.TimeoutSeconds,
+                        EventId = task.EventId,
+                        SubscriberId = task.SubscriberId
+                    }).ToList(),
+                    count = result.Success!.Count(),
+                    limit,
+                    currentTime
+                })
+                : Result<object, Failure>.Fail(result.Failure!);
+
+            if (responseResult.IsSuccess)
             {
-                logger.LogError("Failed to get scheduled tasks: {Error} - Exception: {Exception}", 
-                    result.Failure?.Message, result.Failure?.Exception);
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
+                var tasksList = result.Success!.ToList();
+                logger.LogInformation("Retrieved {Count} scheduled tasks ready for execution at {CurrentTime}",
+                    tasksList.Count, currentTime);
             }
 
-            var tasks = result.Success!;
-            var responses = tasks.Select(task => new TaskResponse
-            {
-                Id = task.Id,
-                Status = task.Status,
-                CreatedAt = task.CreatedAt,
-                StartedAt = task.StartedAt,
-                CompletedAt = task.CompletedAt,
-                RetryCount = task.RetryCount,
-                ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId,
-                // Execution details for TaskWorkerService
-                CallbackUrl = task.CallbackUrl,
-                Method = task.Method,
-                RequestPayload = task.RequestPayload,
-                Headers = task.Headers,
-                MaxRetries = task.MaxRetries,
-                TimeoutSeconds = task.TimeoutSeconds,
-                EventId = task.EventId,
-                SubscriberId = task.SubscriberId
-            }).ToList();
-
-            logger.LogInformation("Retrieved {Count} scheduled tasks ready for execution at {CurrentTime}",
-                responses.Count, currentTime);
-
-            return Ok(new
-            {
-                tasks = responses,
-                count = responses.Count,
-                limit,
-                currentTime
-            });
+            return responseResult.ToActionResult();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Exception in GetScheduledTasksAsync");
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+            var internalErrorFailure = new Failure(nameof(FailureCode.InternalServerError), "Internal server error")
+            {
+                Exception = ex
+            };
+            
+            return Result<object, Failure>.Fail(internalErrorFailure).ToActionResult();
         }
     }
 
@@ -185,71 +190,68 @@ public class TaskManagementController(
     {
         try
         {
+            // 驗證請求參數
             if (string.IsNullOrWhiteSpace(taskId))
             {
-                return BadRequest(new { error = "Task ID is required", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Task ID is required");
+                return Result<object, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             if (string.IsNullOrWhiteSpace(request.Status))
             {
-                return BadRequest(new { error = "Status is required", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Status is required");
+                return Result<object, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             var validStatuses = new[] { "Pending", "Processing", "Completed", "Failed", "Cancelled" };
             if (!validStatuses.Contains(request.Status))
             {
-                return BadRequest(new
-                {
-                    error = $"Invalid status. Must be one of: {string.Join(", ", validStatuses)}",
-                    code = "ValidationError"
-                });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), 
+                    $"Invalid status. Must be one of: {string.Join(", ", validStatuses)}");
+                return Result<object, Failure>.Fail(validationFailure).ToActionResult();
             }
 
-            var result =
-                await taskHandler.UpdateTaskStatusAsync(taskId, request.Status, request.ErrorMessage,
-                    cancellationToken);
+            var result = await taskHandler.UpdateTaskStatusAsync(taskId, request.Status, request.ErrorMessage, cancellationToken);
 
-            if (!result.IsSuccess)
-            {
-                if (result.Failure?.Code == "NotFound")
+            // 轉換為統一的 Result 回應
+            var responseResult = result.IsSuccess
+                ? Result<TaskResponse, Failure>.Ok(new TaskResponse
                 {
-                    return NotFound(new { error = result.Failure?.Message });
-                }
+                    Id = result.Success!.Id,
+                    Status = result.Success.Status,
+                    CreatedAt = result.Success.CreatedAt,
+                    StartedAt = result.Success.StartedAt,
+                    CompletedAt = result.Success.CompletedAt,
+                    RetryCount = result.Success.RetryCount,
+                    ErrorMessage = result.Success.ErrorMessage,
+                    TraceId = result.Success.TraceId,
+                    CallbackUrl = result.Success.CallbackUrl,
+                    Method = result.Success.Method,
+                    RequestPayload = result.Success.RequestPayload,
+                    Headers = result.Success.Headers,
+                    MaxRetries = result.Success.MaxRetries,
+                    TimeoutSeconds = result.Success.TimeoutSeconds,
+                    EventId = result.Success.EventId,
+                    SubscriberId = result.Success.SubscriberId
+                })
+                : Result<TaskResponse, Failure>.Fail(result.Failure!);
 
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
+            if (responseResult.IsSuccess)
+            {
+                logger.LogInformation("Task status updated: {TaskId} -> {Status} - TraceId: {TraceId}",
+                    taskId, request.Status, responseResult.Success!.TraceId);
             }
 
-            var task = result.Success!;
-            var response = new TaskResponse
-            {
-                Id = task.Id,
-                Status = task.Status,
-                CreatedAt = task.CreatedAt,
-                StartedAt = task.StartedAt,
-                CompletedAt = task.CompletedAt,
-                RetryCount = task.RetryCount,
-                ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId,
-                // Execution details for TaskWorkerService
-                CallbackUrl = task.CallbackUrl,
-                Method = task.Method,
-                RequestPayload = task.RequestPayload,
-                Headers = task.Headers,
-                MaxRetries = task.MaxRetries,
-                TimeoutSeconds = task.TimeoutSeconds,
-                EventId = task.EventId,
-                SubscriberId = task.SubscriberId
-            };
-
-            logger.LogInformation("Task status updated: {TaskId} -> {Status} - TraceId: {TraceId}",
-                taskId, request.Status, task.TraceId);
-
-            return Ok(response);
+            return responseResult.ToActionResult();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Exception in UpdateTaskStatusAsync: {TaskId}", taskId);
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+            var internalErrorFailure = new Failure(nameof(FailureCode.InternalServerError), "Internal server error")
+            {
+                Exception = ex
+            };
+            
+            return Result<TaskResponse, Failure>.Fail(internalErrorFailure).ToActionResult();
         }
     }
 
@@ -261,51 +263,48 @@ public class TaskManagementController(
     {
         try
         {
+            // 驗證請求參數
             if (string.IsNullOrWhiteSpace(taskId))
             {
-                return BadRequest(new { error = "Task ID is required", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Task ID is required");
+                return Result<TaskResponse, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             var result = await taskHandler.GetTaskByIdAsync(taskId, cancellationToken);
 
-            if (!result.IsSuccess)
-            {
-                if (result.Failure?.Code == "NotFound")
+            // 轉換為統一的 Result 回應
+            var responseResult = result.IsSuccess
+                ? Result<TaskResponse, Failure>.Ok(new TaskResponse
                 {
-                    return NotFound(new { error = result.Failure?.Message });
-                }
+                    Id = result.Success!.Id,
+                    Status = result.Success.Status,
+                    CreatedAt = result.Success.CreatedAt,
+                    StartedAt = result.Success.StartedAt,
+                    CompletedAt = result.Success.CompletedAt,
+                    RetryCount = result.Success.RetryCount,
+                    ErrorMessage = result.Success.ErrorMessage,
+                    TraceId = result.Success.TraceId,
+                    CallbackUrl = result.Success.CallbackUrl,
+                    Method = result.Success.Method,
+                    RequestPayload = result.Success.RequestPayload,
+                    Headers = result.Success.Headers,
+                    MaxRetries = result.Success.MaxRetries,
+                    TimeoutSeconds = result.Success.TimeoutSeconds,
+                    EventId = result.Success.EventId,
+                    SubscriberId = result.Success.SubscriberId
+                })
+                : Result<TaskResponse, Failure>.Fail(result.Failure!);
 
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
-            }
-
-            var task = result.Success!;
-            var response = new TaskResponse
-            {
-                Id = task.Id,
-                Status = task.Status,
-                CreatedAt = task.CreatedAt,
-                StartedAt = task.StartedAt,
-                CompletedAt = task.CompletedAt,
-                RetryCount = task.RetryCount,
-                ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId,
-                // Execution details for TaskWorkerService
-                CallbackUrl = task.CallbackUrl,
-                Method = task.Method,
-                RequestPayload = task.RequestPayload,
-                Headers = task.Headers,
-                MaxRetries = task.MaxRetries,
-                TimeoutSeconds = task.TimeoutSeconds,
-                EventId = task.EventId,
-                SubscriberId = task.SubscriberId
-            };
-
-            return Ok(response);
+            return responseResult.ToActionResult();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Exception in GetTaskAsync: {TaskId}", taskId);
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+            var internalErrorFailure = new Failure(nameof(FailureCode.InternalServerError), "Internal server error")
+            {
+                Exception = ex
+            };
+            
+            return Result<TaskResponse, Failure>.Fail(internalErrorFailure).ToActionResult();
         }
     }
 
@@ -319,20 +318,23 @@ public class TaskManagementController(
     {
         try
         {
-            // Validate request
+            // 驗證請求參數
             if (string.IsNullOrWhiteSpace(request.TaskName))
             {
-                return BadRequest(new { error = "TaskName is required", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "TaskName is required");
+                return Result<TaskResponse, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             if (string.IsNullOrWhiteSpace(request.CallbackUrl))
             {
-                return BadRequest(new { error = "CallbackUrl is required", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "CallbackUrl is required");
+                return Result<TaskResponse, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             if (!Uri.TryCreate(request.CallbackUrl, UriKind.Absolute, out _))
             {
-                return BadRequest(new { error = "CallbackUrl must be a valid URL", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "CallbackUrl must be a valid URL");
+                return Result<TaskResponse, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             // Convert internal request to original format for handler
@@ -344,44 +346,46 @@ public class TaskManagementController(
 
             var result = await taskHandler.CreateTaskAsync(handlerRequest, cancellationToken);
 
-            if (!result.IsSuccess)
+            // 轉換為統一的 Result 回應
+            var responseResult = result.IsSuccess
+                ? Result<TaskResponse, Failure>.Ok(new TaskResponse
+                {
+                    Id = result.Success!.Id,
+                    Status = result.Success.Status,
+                    CreatedAt = result.Success.CreatedAt,
+                    StartedAt = result.Success.StartedAt,
+                    CompletedAt = result.Success.CompletedAt,
+                    RetryCount = result.Success.RetryCount,
+                    ErrorMessage = result.Success.ErrorMessage,
+                    TraceId = result.Success.TraceId,
+                    // Execution details for TaskWorkerService (from internal request)
+                    CallbackUrl = request.CallbackUrl,
+                    Method = request.Method,
+                    RequestPayload = request.Data,
+                    Headers = request.Headers,
+                    MaxRetries = request.MaxRetries,
+                    TimeoutSeconds = request.TimeoutSeconds,
+                    EventId = request.EventId,
+                    SubscriberId = request.SubscriberId
+                })
+                : Result<TaskResponse, Failure>.Fail(result.Failure!);
+
+            if (responseResult.IsSuccess)
             {
-                logger.LogError("Failed to store task: {TaskName} - {Error} - Exception: {Exception}", 
-                    request.TaskName, result.Failure?.Message, result.Failure?.Exception);
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
+                logger.LogInformation("Task stored successfully: {TaskId} ({TaskName}) - TraceId: {TraceId}",
+                    responseResult.Success!.Id, request.TaskName, responseResult.Success.TraceId);
             }
 
-            var task = result.Success!;
-            var response = new TaskResponse
-            {
-                Id = task.Id,
-                Status = task.Status,
-                CreatedAt = task.CreatedAt,
-                StartedAt = task.StartedAt,
-                CompletedAt = task.CompletedAt,
-                RetryCount = task.RetryCount,
-                ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId,
-                // Execution details for TaskWorkerService (from internal request)
-                CallbackUrl = request.CallbackUrl,
-                Method = request.Method,
-                RequestPayload = request.Data,
-                Headers = request.Headers,
-                MaxRetries = request.MaxRetries,
-                TimeoutSeconds = request.TimeoutSeconds,
-                EventId = request.EventId,
-                SubscriberId = request.SubscriberId
-            };
-
-            logger.LogInformation("Task stored successfully: {TaskId} ({TaskName}) - TraceId: {TraceId}",
-                task.Id, request.TaskName, task.TraceId);
-
-            return Created($"/api/tasks/{task.Id}", response);
+            return responseResult.ToCreatedActionResult($"/api/tasks/{responseResult.Success?.Id}");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Exception in StoreTaskAsync");
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+            var internalErrorFailure = new Failure(nameof(FailureCode.InternalServerError), "Internal server error")
+            {
+                Exception = ex
+            };
+            
+            return Result<TaskResponse, Failure>.Fail(internalErrorFailure).ToActionResult();
         }
     }
 
@@ -397,70 +401,69 @@ public class TaskManagementController(
     {
         try
         {
+            // 驗證請求參數
             if (string.IsNullOrWhiteSpace(taskId))
             {
-                return BadRequest(new { error = "Task ID is required", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Task ID is required");
+                return Result<TaskResponse, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             if (string.IsNullOrWhiteSpace(request.Status))
             {
-                return BadRequest(new { error = "Status is required", code = "ValidationError" });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Status is required");
+                return Result<TaskResponse, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             var validStatuses = new[] { "Scheduled", "Processing", "Completed", "Failed", "Cancelled" };
             if (!validStatuses.Contains(request.Status))
             {
-                return BadRequest(new
-                {
-                    error = $"Invalid status. Must be one of: {string.Join(", ", validStatuses)}",
-                    code = "ValidationError"
-                });
+                var validationFailure = new Failure(nameof(FailureCode.ValidationError),
+                    $"Invalid status. Must be one of: {string.Join(", ", validStatuses)}");
+                return Result<TaskResponse, Failure>.Fail(validationFailure).ToActionResult();
             }
 
             var result = await taskHandler.UpdateScheduledTaskStatusAsync(taskId, request, cancellationToken);
 
-            if (!result.IsSuccess)
-            {
-                if (result.Failure?.Code == "NotFound")
+            // 轉換為統一的 Result 回應
+            var responseResult = result.IsSuccess
+                ? Result<TaskResponse, Failure>.Ok(new TaskResponse
                 {
-                    return NotFound(new { error = result.Failure?.Message });
-                }
+                    Id = result.Success!.Id,
+                    Status = result.Success.Status,
+                    CreatedAt = result.Success.CreatedAt,
+                    StartedAt = result.Success.StartedAt,
+                    CompletedAt = result.Success.CompletedAt,
+                    RetryCount = result.Success.RetryCount,
+                    ErrorMessage = result.Success.ErrorMessage,
+                    TraceId = result.Success.TraceId,
+                    CallbackUrl = result.Success.CallbackUrl,
+                    Method = result.Success.Method,
+                    RequestPayload = result.Success.RequestPayload,
+                    Headers = result.Success.Headers,
+                    MaxRetries = result.Success.MaxRetries,
+                    TimeoutSeconds = result.Success.TimeoutSeconds,
+                    EventId = result.Success.EventId,
+                    SubscriberId = result.Success.SubscriberId
+                })
+                : Result<TaskResponse, Failure>.Fail(result.Failure!);
 
-                return BadRequest(new { error = result.Failure?.Message, code = result.Failure?.Code });
+            if (responseResult.IsSuccess)
+            {
+                logger.LogInformation(
+                    "Scheduled task status updated: {TaskId} -> {Status} (NextScheduled: {NextScheduledAt}) - TraceId: {TraceId}",
+                    taskId, request.Status, request.NextScheduledAt, responseResult.Success!.TraceId);
             }
 
-            var task = result.Success!;
-            var response = new TaskResponse
-            {
-                Id = task.Id,
-                Status = task.Status,
-                CreatedAt = task.CreatedAt,
-                StartedAt = task.StartedAt,
-                CompletedAt = task.CompletedAt,
-                RetryCount = task.RetryCount,
-                ErrorMessage = task.ErrorMessage,
-                TraceId = task.TraceId,
-                // Execution details for TaskWorkerService
-                CallbackUrl = task.CallbackUrl,
-                Method = task.Method,
-                RequestPayload = task.RequestPayload,
-                Headers = task.Headers,
-                MaxRetries = task.MaxRetries,
-                TimeoutSeconds = task.TimeoutSeconds,
-                EventId = task.EventId,
-                SubscriberId = task.SubscriberId
-            };
-
-            logger.LogInformation(
-                "Scheduled task status updated: {TaskId} -> {Status} (NextScheduled: {NextScheduledAt}) - TraceId: {TraceId}",
-                taskId, request.Status, request.NextScheduledAt, task.TraceId);
-
-            return Ok(response);
+            return responseResult.ToActionResult();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Exception in UpdateScheduledTaskStatusAsync: {TaskId}", taskId);
-            return StatusCode(500, new { error = "Internal server error", code = "InternalError" });
+            var internalErrorFailure = new Failure(nameof(FailureCode.InternalServerError), "Internal server error")
+            {
+                Exception = ex
+            };
+            
+            return Result<TaskResponse, Failure>.Fail(internalErrorFailure).ToActionResult();
         }
     }
 }

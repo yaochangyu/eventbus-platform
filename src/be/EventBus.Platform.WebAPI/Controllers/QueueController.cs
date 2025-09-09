@@ -2,7 +2,6 @@ using EventBus.Infrastructure.Queue;
 using EventBus.Infrastructure.TraceContext;
 using EventBus.Platform.WebAPI.Handlers;
 using EventBus.Infrastructure.Models;
-using EventBus.Infrastructure.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EventBus.Platform.WebAPI.Controllers;
@@ -18,68 +17,81 @@ public class QueueController(
     [HttpPost("{queueName}/enqueue")]
     public async Task<IActionResult> Enqueue(string queueName, [FromBody] EnqueueRequest request)
     {
+        // 驗證請求參數
+        if (string.IsNullOrWhiteSpace(queueName))
+        {
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Queue name is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
+        }
+
+        if (request.Item == null)
+        {
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Item is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
+        }
+
         var traceContext = traceContextGetter.GetContext();
         
         var enqueueResult = await queueService.EnqueueAsync(request.Item, queueName);
         
-        if (!enqueueResult.IsSuccess)
-        {
-            logger.LogError("Failed to enqueue item to queue {QueueName}: {Error} - Exception: {Exception}", 
-                queueName, enqueueResult.Failure?.Message, enqueueResult.Failure?.Exception);
-            return BadRequest(new 
+        // 轉換為統一的 Result 回應
+        var responseResult = enqueueResult.IsSuccess 
+            ? Result<object, Failure>.Ok(new
             {
-                Error = enqueueResult.Failure?.Message,
-                Code = enqueueResult.Failure?.Code
-            });
-        }
-        
-        return Ok(new
-        {
-            QueueName = queueName,
-            Item = request.Item,
-            QueueCount = queueService.GetCount(queueName),
-            TraceId = traceContext?.TraceId,
-            EnqueuedAt = DateTime.UtcNow
-        });
+                QueueName = queueName,
+                Item = request.Item,
+                QueueCount = queueService.GetCount(queueName),
+                TraceId = traceContext?.TraceId,
+                EnqueuedAt = DateTime.UtcNow
+            })
+            : Result<object, Failure>.Fail(enqueueResult.Failure!);
+
+        return responseResult.ToActionResult();
     }
 
     [HttpPost("{queueName}/dequeue")]
     public async Task<IActionResult> Dequeue(string queueName)
     {
+        // 驗證請求參數
+        if (string.IsNullOrWhiteSpace(queueName))
+        {
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Queue name is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
+        }
+
         var traceContext = traceContextGetter.GetContext();
         
         var dequeueResult = await queueService.DequeueAsync<object>(queueName);
         
-        if (!dequeueResult.IsSuccess)
-        {
-            logger.LogError("Failed to dequeue item from queue {QueueName}: {Error} - Exception: {Exception}", 
-                queueName, dequeueResult.Failure?.Message, dequeueResult.Failure?.Exception);
-            return BadRequest(new 
+        // 轉換為統一的 Result 回應
+        var responseResult = dequeueResult.IsSuccess 
+            ? Result<object, Failure>.Ok(new
             {
-                Error = dequeueResult.Failure?.Message,
-                Code = dequeueResult.Failure?.Code
-            });
-        }
-        
-        var item = dequeueResult.Success;
-        
-        return Ok(new
-        {
-            QueueName = queueName,
-            Item = item,
-            Found = item != null,
-            RemainingCount = queueService.GetCount(queueName),
-            TraceId = traceContext?.TraceId,
-            DequeuedAt = DateTime.UtcNow
-        });
+                QueueName = queueName,
+                Item = dequeueResult.Success,
+                Found = dequeueResult.Success != null,
+                RemainingCount = queueService.GetCount(queueName),
+                TraceId = traceContext?.TraceId,
+                DequeuedAt = DateTime.UtcNow
+            })
+            : Result<object, Failure>.Fail(dequeueResult.Failure!);
+
+        return responseResult.ToActionResult();
     }
 
     [HttpGet("{queueName}/status")]
     public IActionResult GetStatus(string queueName)
     {
+        // 驗證請求參數
+        if (string.IsNullOrWhiteSpace(queueName))
+        {
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Queue name is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
+        }
+
         var traceContext = traceContextGetter.GetContext();
         
-        return Ok(new
+        var result = Result<object, Failure>.Ok(new
         {
             QueueName = queueName,
             Count = queueService.GetCount(queueName),
@@ -87,6 +99,8 @@ public class QueueController(
             TraceId = traceContext?.TraceId,
             Timestamp = DateTime.UtcNow
         });
+
+        return result.ToActionResult();
     }
 
     /// <summary>
@@ -97,6 +111,13 @@ public class QueueController(
     [HttpPost("dequeue-task")]
     public async Task<IActionResult> DequeueTask([FromQuery] string queueName = "immediate-tasks")
     {
+        // 驗證請求參數
+        if (string.IsNullOrWhiteSpace(queueName))
+        {
+            var validationFailure = new Failure(nameof(FailureCode.ValidationError), "Queue name is required");
+            return Result<object, Failure>.Fail(validationFailure).ToActionResult();
+        }
+
         var traceContext = traceContextGetter.GetContext();
         
         try
@@ -109,7 +130,7 @@ public class QueueController(
                 logger.LogDebug("No tasks available in queue: {QueueName} - TraceId: {TraceId}", 
                     queueName, traceContext?.TraceId);
                 
-                return Ok(new
+                var emptyQueueResponse = Result<object, Failure>.Ok(new
                 {
                     QueueName = queueName,
                     Success = false,
@@ -118,6 +139,8 @@ public class QueueController(
                     TraceId = traceContext?.TraceId,
                     Timestamp = DateTime.UtcNow
                 });
+
+                return emptyQueueResponse.ToActionResult();
             }
 
             var taskRequest = result.Success!;
@@ -129,9 +152,6 @@ public class QueueController(
             
             if (!createResult.IsSuccess)
             {
-                logger.LogError("Failed to store dequeued task in database: {Error} - TraceId: {TraceId}", 
-                    createResult.Failure?.Message, traceContext?.TraceId);
-                
                 // If we fail to store, we should re-enqueue the task to avoid losing it
                 var reEnqueueResult = await queueService.EnqueueAsync(taskRequest, queueName);
                 if (!reEnqueueResult.IsSuccess)
@@ -139,20 +159,15 @@ public class QueueController(
                     logger.LogError("Failed to re-enqueue task after database error: {Error}", reEnqueueResult.Failure?.Message);
                 }
                 
-                return StatusCode(500, new
-                {
-                    error = "Failed to store task in database",
-                    details = createResult.Failure?.Message,
-                    code = createResult.Failure?.Code,
-                    TraceId = traceContext?.TraceId
-                });
+                // 返回統一的失敗格式
+                return Result<object, Failure>.Fail(createResult.Failure!).ToActionResult();
             }
 
             var task = createResult.Success!;
             logger.LogInformation("Task stored successfully: {TaskId} with Status: {Status} - TraceId: {TraceId}", 
                 task.Id, task.Status, traceContext?.TraceId);
 
-            return Ok(new
+            var successResponse = Result<object, Failure>.Ok(new
             {
                 QueueName = queueName,
                 Success = true,
@@ -164,18 +179,18 @@ public class QueueController(
                 TraceId = traceContext?.TraceId,
                 DequeuedAt = DateTime.UtcNow
             });
+
+            return successResponse.ToActionResult();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Exception in DequeueTask for queue: {QueueName} - TraceId: {TraceId}", 
-                queueName, traceContext?.TraceId);
-            
-            return StatusCode(500, new
+            var internalErrorFailure = new Failure(nameof(FailureCode.InternalServerError), "Internal server error")
             {
-                error = "Internal server error",
-                code = "InternalError",
-                TraceId = traceContext?.TraceId
-            });
+                TraceId = traceContext?.TraceId,
+                Exception = ex
+            };
+            
+            return Result<object, Failure>.Fail(internalErrorFailure).ToActionResult();
         }
     }
 }

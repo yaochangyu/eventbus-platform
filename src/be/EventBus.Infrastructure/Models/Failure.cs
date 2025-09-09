@@ -22,23 +22,23 @@ namespace EventBus.Infrastructure.Models
         /// <summary>
         /// 錯誤訊息
         /// </summary>
-        public string Message { get; init; }
+        public string Message { get; init; } = string.Empty;
 
         /// <summary>
         /// 錯誤發生時的資料
         /// </summary>
-        public object Data { get; init; }
+        public object? Data { get; init; }
 
         /// <summary>
         /// 追蹤 Id
         /// </summary>
-        public string TraceId { get; init; }
+        public string? TraceId { get; init; }
 
         /// <summary>
         /// 例外，不回傳給 Web API 
         /// </summary>
         [JsonIgnore]
-        public Exception Exception { get; init; }
+        public Exception? Exception { get; init; }
 
         public List<Failure> Details { get; init; } = new();
     }

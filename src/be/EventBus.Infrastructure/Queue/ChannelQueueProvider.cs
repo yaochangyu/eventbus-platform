@@ -28,7 +28,6 @@ public class ChannelQueueProvider<T>(ILogger<ChannelQueueProvider<T>> logger, in
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error enqueuing item to channel queue");
             return Result<bool, Failure>.Fail(new Failure(FailureCode.EnqueueError.ToString(), ex.Message) { Exception = ex });
         }
     }
@@ -48,7 +47,6 @@ public class ChannelQueueProvider<T>(ILogger<ChannelQueueProvider<T>> logger, in
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error dequeuing item from channel queue");
             return Result<T?, Failure>.Fail(new Failure(FailureCode.DequeueError.ToString(), ex.Message) { Exception = ex });
         }
     }
@@ -68,7 +66,6 @@ public class ChannelQueueProvider<T>(ILogger<ChannelQueueProvider<T>> logger, in
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error trying to dequeue item from channel queue");
             return Task.FromResult(Result<T?, Failure>.Fail(new Failure(FailureCode.TryDequeueError.ToString(), ex.Message) { Exception = ex }));
         }
     }
@@ -88,7 +85,6 @@ public class ChannelQueueProvider<T>(ILogger<ChannelQueueProvider<T>> logger, in
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error peeking item from channel queue");
             return Task.FromResult(Result<T?, Failure>.Fail(new Failure(FailureCode.PeekError.ToString(), ex.Message) { Exception = ex }));
         }
     }
@@ -108,7 +104,6 @@ public class ChannelQueueProvider<T>(ILogger<ChannelQueueProvider<T>> logger, in
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error clearing channel queue");
             return Task.FromResult(Result<bool, Failure>.Fail(new Failure(FailureCode.ClearError.ToString(), ex.Message) { Exception = ex }));
         }
     }
@@ -204,7 +199,6 @@ public class ChannelQueueService(ILogger<ChannelQueueService> logger) : IQueuePr
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error clearing queue: {QueueName}", queueName);
             return Result<bool, Failure>.Fail(new Failure(FailureCode.ClearQueueError.ToString(), ex.Message) { Exception = ex });
         }
     }

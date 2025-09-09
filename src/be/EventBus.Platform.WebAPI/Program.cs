@@ -2,15 +2,24 @@ using EventBus.Infrastructure.Extensions;
 using EventBus.Infrastructure.TraceContext;
 using EventBus.Infrastructure.Caching;
 using EventBus.Infrastructure.Queue;
+using EventBus.Platform.WebAPI.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using System.Text.Json.Serialization;
 
-// Configure Serilog
+// Configure Serilog with structured logging
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
-    .WriteTo.Console()
-    .WriteTo.File("logs/eventbus-platform-.log", rollingInterval: RollingInterval.Day)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "EventBus.Platform.WebAPI")
+    .WriteTo.Console(outputTemplate: 
+        "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {NewLine}{Exception}")
+    .WriteTo.File(
+        path: "logs/eventbus-platform-.log", 
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        outputTemplate: 
+            "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {NewLine}{Exception}")
     .CreateLogger();
 
 var builder = WebApplication.CreateBuilder(args);
@@ -85,7 +94,17 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// 中介軟體管線順序很重要：
+// 1. ExceptionHandlingMiddleware - 最外層，捕捉所有系統例外
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
+// 2. TraceContextMiddleware - 處理追蹤內容與使用者身分驗證
 app.UseMiddleware<TraceContextMiddleware>();
+
+// 3. RequestParameterLoggerMiddleware - 記錄請求完成時的資訊
+app.UseMiddleware<RequestParameterLoggerMiddleware>();
+
 app.UseRouting();
 app.MapControllers();
 
