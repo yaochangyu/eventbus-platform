@@ -9,7 +9,7 @@ namespace EventBus.Platform.WebAPI.Handlers;
 public class TaskHandler(
     IContextGetter<TraceContext?> traceContextGetter,
     ITaskRepository taskRepository,
-    IQueueService queueService,
+    IQueueProvider queueService,
     ILogger<TaskHandler> logger) : ITaskHandler
 {
     public async Task<Result<TaskEntity, Failure>> CreateTaskAsync(CreateTaskRequest request,

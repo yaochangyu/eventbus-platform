@@ -21,7 +21,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IContextGetter<TraceContextType?>, TraceContextGetter>();
         
         // Queue 服務
-        services.AddSingleton<IQueueService>(serviceProvider =>
+        services.AddSingleton<IQueueProvider>(serviceProvider =>
         {
             var queueOptions = serviceProvider.GetService<IOptions<QueueOptions>>();
             var logger = serviceProvider.GetRequiredService<ILogger<ChannelQueueService>>();

@@ -25,7 +25,7 @@ public interface ITaskHandler
 public record CreateTaskRequest
 {
     public string TaskName { get; init; } = string.Empty;
-    public string Data { get; init; } = string.Empty;
+    public object Data { get; init; } = new { };
 }
 
 /// <summary>

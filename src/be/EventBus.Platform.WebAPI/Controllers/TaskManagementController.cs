@@ -32,7 +32,7 @@ public class TaskManagementController(
             return Accepted(new
             {
                 Task = result.Success,
-                TaskName = request.TaskName,
+                request.TaskName,
                 Type = "Immediate"
             });
         }

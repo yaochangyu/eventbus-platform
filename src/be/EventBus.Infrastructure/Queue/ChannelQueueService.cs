@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Logging;
 using System.Threading.Channels;
 using System.Collections.Concurrent;
+using EventBus.Infrastructure.Models;
 
 namespace EventBus.Infrastructure.Queue;
 
-public class ChannelQueueService<T>(ILogger<ChannelQueueService<T>> logger, int capacity = 1000) : IQueueService<T>
+public class ChannelQueueService<T>(ILogger<ChannelQueueService<T>> logger, int capacity = 1000) : IQueueProvider<T>
 {
     private readonly Channel<T> _channel = Channel.CreateBounded<T>(new BoundedChannelOptions(capacity)
     {
@@ -17,81 +18,82 @@ public class ChannelQueueService<T>(ILogger<ChannelQueueService<T>> logger, int 
 
     public bool IsEmpty => Count == 0;
 
-    public async Task EnqueueAsync(T item, CancellationToken cancellationToken = default)
+    public async Task<Result<bool, Failure>> EnqueueAsync(T item, CancellationToken cancellationToken = default)
     {
         try
         {
             await _channel.Writer.WriteAsync(item, cancellationToken).ConfigureAwait(false);
             logger.LogDebug("Item enqueued to channel queue. Current count: {Count}", Count);
+            return Result<bool, Failure>.Ok(true);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error enqueuing item to channel queue");
-            throw;
+            return Result<bool, Failure>.Fail(new Failure(ex.Message, "ENQUEUE_ERROR"));
         }
     }
 
-    public async Task<T?> DequeueAsync(CancellationToken cancellationToken = default)
+    public async Task<Result<T?, Failure>> DequeueAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             var item = await _channel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
             logger.LogDebug("Item dequeued from channel queue. Remaining count: {Count}", Count);
-            return item;
+            return Result<T?, Failure>.Ok(item);
         }
         catch (InvalidOperationException)
         {
             logger.LogDebug("Channel queue is empty or completed");
-            return default;
+            return Result<T?, Failure>.Ok(default);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error dequeuing item from channel queue");
-            throw;
+            return Result<T?, Failure>.Fail(new Failure(ex.Message, "DEQUEUE_ERROR"));
         }
     }
 
-    public async Task<(bool Success, T? Item)> TryDequeueAsync(CancellationToken cancellationToken = default)
+    public Task<Result<T?, Failure>> TryDequeueAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             if (_channel.Reader.TryRead(out var item))
             {
                 logger.LogDebug("Item successfully dequeued from channel queue. Remaining count: {Count}", Count);
-                return (true, item);
+                return Task.FromResult(Result<T?, Failure>.Ok(item));
             }
             
             logger.LogDebug("Channel queue is empty, no item to dequeue");
-            return (false, default);
+            return Task.FromResult(Result<T?, Failure>.Ok(default));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error trying to dequeue item from channel queue");
-            return (false, default);
+            return Task.FromResult(Result<T?, Failure>.Fail(new Failure(ex.Message, "TRY_DEQUEUE_ERROR")));
         }
     }
 
-    public async Task<T?> PeekAsync(CancellationToken cancellationToken = default)
+    public Task<Result<T?, Failure>> PeekAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             if (_channel.Reader.TryPeek(out var item))
             {
                 logger.LogDebug("Item peeked from channel queue");
-                return item;
+                return Task.FromResult(Result<T?, Failure>.Ok(item));
             }
             
             logger.LogDebug("Channel queue is empty, no item to peek");
-            return default;
+            return Task.FromResult(Result<T?, Failure>.Ok(default));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error peeking item from channel queue");
-            return default;
+            return Task.FromResult(Result<T?, Failure>.Fail(new Failure(ex.Message, "PEEK_ERROR")));
         }
     }
 
-    public Task ClearAsync(CancellationToken cancellationToken = default)
+    public Task<Result<bool, Failure>> ClearAsync(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -102,28 +104,27 @@ public class ChannelQueueService<T>(ILogger<ChannelQueueService<T>> logger, int 
             }
             
             logger.LogInformation("Channel queue cleared, removed {Count} items", clearedCount);
+            return Task.FromResult(Result<bool, Failure>.Ok(true));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error clearing channel queue");
-            throw;
+            return Task.FromResult(Result<bool, Failure>.Fail(new Failure(ex.Message, "CLEAR_ERROR")));
         }
-        
-        return Task.CompletedTask;
     }
 }
 
 /// <summary>
 /// 支援多個命名佇列的 Channel 實作
 /// </summary>
-public class ChannelQueueService(ILogger<ChannelQueueService> logger) : IQueueService
+public class ChannelQueueService(ILogger<ChannelQueueService> logger) : IQueueProvider
 {
     private readonly ConcurrentDictionary<string, object> _queues = new();
     private readonly ConcurrentDictionary<string, int> _queueCapacities = new();
 
-    private IQueueService<T> GetOrCreateQueue<T>(string queueName, int capacity = 1000)
+    private IQueueProvider<T> GetOrCreateQueue<T>(string queueName, int capacity = 1000)
     {
-        return (IQueueService<T>)_queues.GetOrAdd(queueName, _ =>
+        return (IQueueProvider<T>)_queues.GetOrAdd(queueName, _ =>
         {
             _queueCapacities.TryAdd(queueName, capacity);
             // 使用 NullLogger 避免依賴問題
@@ -132,28 +133,35 @@ public class ChannelQueueService(ILogger<ChannelQueueService> logger) : IQueueSe
         });
     }
 
-    public async Task EnqueueAsync<T>(T item, string queueName = "default", CancellationToken cancellationToken = default)
+    public async Task<Result<bool, Failure>> EnqueueAsync<T>(T item, string queueName = "default", CancellationToken cancellationToken = default)
     {
         var queue = GetOrCreateQueue<T>(queueName);
-        await queue.EnqueueAsync(item, cancellationToken).ConfigureAwait(false);
-        logger.LogDebug("Item enqueued to queue: {QueueName}", queueName);
-    }
-
-    public async Task<T?> DequeueAsync<T>(string queueName = "default", CancellationToken cancellationToken = default)
-    {
-        var queue = GetOrCreateQueue<T>(queueName);
-        var result = await queue.DequeueAsync(cancellationToken).ConfigureAwait(false);
-        logger.LogDebug("Item dequeued from queue: {QueueName}", queueName);
+        var result = await queue.EnqueueAsync(item, cancellationToken).ConfigureAwait(false);
+        if (result.IsSuccess)
+        {
+            logger.LogDebug("Item enqueued to queue: {QueueName}", queueName);
+        }
         return result;
     }
 
-    public async Task<(bool Success, T? Item)> TryDequeueAsync<T>(string queueName = "default", CancellationToken cancellationToken = default)
+    public async Task<Result<T?, Failure>> DequeueAsync<T>(string queueName = "default", CancellationToken cancellationToken = default)
+    {
+        var queue = GetOrCreateQueue<T>(queueName);
+        var result = await queue.DequeueAsync(cancellationToken).ConfigureAwait(false);
+        if (result.IsSuccess)
+        {
+            logger.LogDebug("Item dequeued from queue: {QueueName}", queueName);
+        }
+        return result;
+    }
+
+    public async Task<Result<T?, Failure>> TryDequeueAsync<T>(string queueName = "default", CancellationToken cancellationToken = default)
     {
         var queue = GetOrCreateQueue<T>(queueName);
         return await queue.TryDequeueAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<T?> PeekAsync<T>(string queueName = "default", CancellationToken cancellationToken = default)
+    public async Task<Result<T?, Failure>> PeekAsync<T>(string queueName = "default", CancellationToken cancellationToken = default)
     {
         var queue = GetOrCreateQueue<T>(queueName);
         return await queue.PeekAsync(cancellationToken).ConfigureAwait(false);
@@ -174,16 +182,30 @@ public class ChannelQueueService(ILogger<ChannelQueueService> logger) : IQueueSe
         return GetCount(queueName) == 0;
     }
 
-    public async Task ClearAsync(string queueName = "default", CancellationToken cancellationToken = default)
+    public async Task<Result<bool, Failure>> ClearAsync(string queueName = "default", CancellationToken cancellationToken = default)
     {
-        if (_queues.TryGetValue(queueName, out var queueObj))
+        try
         {
-            var clearMethod = queueObj.GetType().GetMethod("ClearAsync");
-            if (clearMethod != null)
+            if (_queues.TryGetValue(queueName, out var queueObj))
             {
-                await ((Task)clearMethod.Invoke(queueObj, new object[] { cancellationToken })!).ConfigureAwait(false);
-                logger.LogInformation("Queue cleared: {QueueName}", queueName);
+                var clearMethod = queueObj.GetType().GetMethod("ClearAsync");
+                if (clearMethod != null)
+                {
+                    var taskResult = (Task<Result<bool, Failure>>)clearMethod.Invoke(queueObj, new object[] { cancellationToken })!;
+                    var result = await taskResult.ConfigureAwait(false);
+                    if (result.IsSuccess)
+                    {
+                        logger.LogInformation("Queue cleared: {QueueName}", queueName);
+                    }
+                    return result;
+                }
             }
+            return Result<bool, Failure>.Ok(true);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error clearing queue: {QueueName}", queueName);
+            return Result<bool, Failure>.Fail(new Failure(ex.Message, "CLEAR_QUEUE_ERROR"));
         }
     }
 

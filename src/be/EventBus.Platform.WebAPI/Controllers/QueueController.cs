@@ -2,6 +2,7 @@ using EventBus.Infrastructure.Queue;
 using EventBus.Infrastructure.TraceContext;
 using EventBus.Platform.WebAPI.Handlers;
 using EventBus.Platform.WebAPI.Models;
+using EventBus.Infrastructure.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EventBus.Platform.WebAPI.Controllers;
@@ -9,7 +10,7 @@ namespace EventBus.Platform.WebAPI.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 public class QueueController(
-    IQueueService queueService,
+    IQueueProvider queueService,
     IContextGetter<TraceContext?> traceContextGetter,
     ITaskHandler taskHandler,
     ILogger<QueueController> logger) : ControllerBase
@@ -19,7 +20,16 @@ public class QueueController(
     {
         var traceContext = traceContextGetter.GetContext();
         
-        await queueService.EnqueueAsync(request.Item, queueName);
+        var enqueueResult = await queueService.EnqueueAsync(request.Item, queueName);
+        
+        if (!enqueueResult.IsSuccess)
+        {
+            return BadRequest(new 
+            {
+                Error = enqueueResult.Failure?.Message,
+                Code = enqueueResult.Failure?.Code
+            });
+        }
         
         return Ok(new
         {
@@ -36,7 +46,18 @@ public class QueueController(
     {
         var traceContext = traceContextGetter.GetContext();
         
-        var item = await queueService.DequeueAsync<object>(queueName);
+        var dequeueResult = await queueService.DequeueAsync<object>(queueName);
+        
+        if (!dequeueResult.IsSuccess)
+        {
+            return BadRequest(new 
+            {
+                Error = dequeueResult.Failure?.Message,
+                Code = dequeueResult.Failure?.Code
+            });
+        }
+        
+        var item = dequeueResult.Success;
         
         return Ok(new
         {
@@ -79,7 +100,7 @@ public class QueueController(
             // Try to dequeue task request from specified queue
             var result = await queueService.TryDequeueAsync<CreateTaskRequest>(queueName);
             
-            if (!result.Success || result.Item == null)
+            if (!result.IsSuccess || result.Success == null)
             {
                 logger.LogDebug("No tasks available in queue: {QueueName} - TraceId: {TraceId}", 
                     queueName, traceContext?.TraceId);
@@ -95,7 +116,7 @@ public class QueueController(
                 });
             }
 
-            var taskRequest = result.Item;
+            var taskRequest = result.Success!;
             logger.LogInformation("Dequeued task request from {QueueName} - TraceId: {TraceId}", 
                 queueName, traceContext?.TraceId);
 
@@ -108,7 +129,11 @@ public class QueueController(
                     createResult.Failure?.Message, traceContext?.TraceId);
                 
                 // If we fail to store, we should re-enqueue the task to avoid losing it
-                await queueService.EnqueueAsync(taskRequest, queueName);
+                var reEnqueueResult = await queueService.EnqueueAsync(taskRequest, queueName);
+                if (!reEnqueueResult.IsSuccess)
+                {
+                    logger.LogError("Failed to re-enqueue task after database error: {Error}", reEnqueueResult.Failure?.Message);
+                }
                 
                 return StatusCode(500, new
                 {
