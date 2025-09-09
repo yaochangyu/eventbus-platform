@@ -1,2 +1,2 @@
 - spec workflow 需求文檔放在 ./.specs 資料夾下面
-- ASP.NET Core 的編碼原則放在 ./.specs/code_style.md
+- ASP.NET Core 的編碼原則放在 ./.specs/code_style.md 以及 ./.specs/examples/api.template/CLAUDE.md

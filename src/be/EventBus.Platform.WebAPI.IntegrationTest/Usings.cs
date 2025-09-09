@@ -1,0 +1,12 @@
+global using Xunit;
+global using FluentAssertions;
+global using System.Net;
+global using System.Net.Http.Json;
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging;
+global using Reqnroll;
+global using Testcontainers.PostgreSql;
+global using Testcontainers.Redis;
+global using WireMock.Net.Testcontainers;
+global using Polly;
+global using System.Text.Json;
