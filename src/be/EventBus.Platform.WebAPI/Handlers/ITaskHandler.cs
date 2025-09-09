@@ -1,3 +1,4 @@
+using EventBus.Infrastructure.Models;
 using EventBus.Platform.WebAPI.Models;
 
 namespace EventBus.Platform.WebAPI.Handlers;

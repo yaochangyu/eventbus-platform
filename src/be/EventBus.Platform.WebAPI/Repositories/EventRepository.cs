@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using EventBus.Infrastructure.Caching;
 using EventBus.Infrastructure.TraceContext;
+using EventBus.Infrastructure.Models;
 using EventBus.Platform.WebAPI.Models;
 
 namespace EventBus.Platform.WebAPI.Repositories;
@@ -40,7 +41,8 @@ public class EventRepository(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to create event - TraceId: {TraceId}", traceContext?.TraceId);
-            return Result<EventEntity, Failure>.Fail(new Failure("Failed to create event", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<EventEntity, Failure>.Fail(new Failure("InternalError", "Failed to create event") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -70,7 +72,8 @@ public class EventRepository(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get event by ID: {Id} - TraceId: {TraceId}", id, traceContext?.TraceId);
-            return Result<EventEntity, Failure>.Fail(new Failure("Failed to retrieve event", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<EventEntity, Failure>.Fail(new Failure("InternalError", "Failed to retrieve event") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -102,7 +105,8 @@ public class EventRepository(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to update event: {EventId} - TraceId: {TraceId}", eventEntity.Id, traceContext?.TraceId);
-            return Result<EventEntity, Failure>.Fail(new Failure("Failed to update event", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<EventEntity, Failure>.Fail(new Failure("InternalError", "Failed to update event") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -129,7 +133,8 @@ public class EventRepository(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to delete event: {EventId} - TraceId: {TraceId}", id, traceContext?.TraceId);
-            return Result<bool, Failure>.Fail(new Failure("Failed to delete event", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<bool, Failure>.Fail(new Failure("InternalError", "Failed to delete event") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -150,7 +155,8 @@ public class EventRepository(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get events by type: {EventType} - TraceId: {TraceId}", eventType, traceContext?.TraceId);
-            return Result<List<EventEntity>, Failure>.Fail(new Failure("Failed to retrieve events by type", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<List<EventEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve events by type") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -171,7 +177,8 @@ public class EventRepository(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get events by status: {Status} - TraceId: {TraceId}", status, traceContext?.TraceId);
-            return Result<List<EventEntity>, Failure>.Fail(new Failure("Failed to retrieve events by status", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<List<EventEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve events by status") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -193,7 +200,8 @@ public class EventRepository(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get pending events - TraceId: {TraceId}", traceContext?.TraceId);
-            return Result<List<EventEntity>, Failure>.Fail(new Failure("Failed to retrieve pending events", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<List<EventEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve pending events") { Exception = ex, TraceId = traceId });
         }
     }
 }

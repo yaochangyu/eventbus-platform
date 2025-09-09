@@ -1,4 +1,4 @@
-using EventBus.Platform.WebAPI.Models;
+using EventBus.Infrastructure.Models;
 using System.Text.Json;
 
 namespace EventBus.Platform.WebAPI.Handlers;
@@ -54,7 +54,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create task configuration: {TaskName}", request.TaskName);
-            return Result<TaskConfig, Failure>.Fail(new Failure(ex.Message, "CreateConfigFailed"));
+            return Result<TaskConfig, Failure>.Fail(new Failure("CreateConfigFailed", ex.Message) { Exception = ex });
         }
     }
 
@@ -97,7 +97,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create task configuration (generic): {TaskName}", request.TaskName);
-            return Result<TaskConfig, Failure>.Fail(new Failure(ex.Message, "CreateConfigFailed"));
+            return Result<TaskConfig, Failure>.Fail(new Failure("CreateConfigFailed", ex.Message) { Exception = ex });
         }
     }
 
@@ -115,7 +115,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get task configuration: {TaskName}", taskName);
-            return Result<TaskConfig, Failure>.Fail(new Failure(ex.Message, "GetConfigFailed"));
+            return Result<TaskConfig, Failure>.Fail(new Failure("GetConfigFailed", ex.Message) { Exception = ex });
         }
     }
 
@@ -151,7 +151,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update task configuration: {TaskName}", taskName);
-            return Result<TaskConfig, Failure>.Fail(new Failure(ex.Message, "UpdateConfigFailed"));
+            return Result<TaskConfig, Failure>.Fail(new Failure("UpdateConfigFailed", ex.Message) { Exception = ex });
         }
     }
 
@@ -173,7 +173,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to delete task configuration: {TaskName}", taskName);
-            return Result<bool, Failure>.Fail(new Failure(ex.Message, "DeleteConfigFailed"));
+            return Result<bool, Failure>.Fail(new Failure("DeleteConfigFailed", ex.Message) { Exception = ex });
         }
     }
 
@@ -190,7 +190,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get all task configurations");
-            return Result<List<TaskConfig>, Failure>.Fail(new Failure(ex.Message, "GetAllConfigsFailed"));
+            return Result<List<TaskConfig>, Failure>.Fail(new Failure("GetAllConfigsFailed", ex.Message) { Exception = ex });
         }
     }
 }

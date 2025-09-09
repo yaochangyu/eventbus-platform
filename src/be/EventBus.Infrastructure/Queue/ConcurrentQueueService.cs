@@ -25,7 +25,7 @@ public class ConcurrentQueueService<T>(ILogger<ConcurrentQueueService<T>> logger
         catch (Exception ex)
         {
             logger.LogError(ex, "Error enqueuing item to concurrent queue");
-            return Task.FromResult(Result<bool, Failure>.Fail(new Failure(ex.Message, "ENQUEUE_ERROR")));
+            return Task.FromResult(Result<bool, Failure>.Fail(new Failure("ENQUEUE_ERROR", ex.Message) { Exception = ex }));
         }
     }
 
@@ -46,7 +46,7 @@ public class ConcurrentQueueService<T>(ILogger<ConcurrentQueueService<T>> logger
         catch (Exception ex)
         {
             logger.LogError(ex, "Error dequeuing item from concurrent queue");
-            return Task.FromResult(Result<T?, Failure>.Fail(new Failure(ex.Message, "DEQUEUE_ERROR")));
+            return Task.FromResult(Result<T?, Failure>.Fail(new Failure("DEQUEUE_ERROR", ex.Message) { Exception = ex }));
         }
     }
 
@@ -67,7 +67,7 @@ public class ConcurrentQueueService<T>(ILogger<ConcurrentQueueService<T>> logger
         catch (Exception ex)
         {
             logger.LogError(ex, "Error trying to dequeue item from concurrent queue");
-            return Task.FromResult(Result<T?, Failure>.Fail(new Failure(ex.Message, "TRY_DEQUEUE_ERROR")));
+            return Task.FromResult(Result<T?, Failure>.Fail(new Failure("TRY_DEQUEUE_ERROR", ex.Message) { Exception = ex }));
         }
     }
 
@@ -87,7 +87,7 @@ public class ConcurrentQueueService<T>(ILogger<ConcurrentQueueService<T>> logger
         catch (Exception ex)
         {
             logger.LogError(ex, "Error peeking item from concurrent queue");
-            return Task.FromResult(Result<T?, Failure>.Fail(new Failure(ex.Message, "PEEK_ERROR")));
+            return Task.FromResult(Result<T?, Failure>.Fail(new Failure("PEEK_ERROR", ex.Message) { Exception = ex }));
         }
     }
 
@@ -108,7 +108,7 @@ public class ConcurrentQueueService<T>(ILogger<ConcurrentQueueService<T>> logger
         catch (Exception ex)
         {
             logger.LogError(ex, "Error clearing concurrent queue");
-            return Task.FromResult(Result<bool, Failure>.Fail(new Failure(ex.Message, "CLEAR_ERROR")));
+            return Task.FromResult(Result<bool, Failure>.Fail(new Failure("CLEAR_ERROR", ex.Message) { Exception = ex }));
         }
     }
 }
@@ -202,7 +202,7 @@ public class ConcurrentQueueService(ILogger<ConcurrentQueueService> logger) : IQ
         catch (Exception ex)
         {
             logger.LogError(ex, "Error clearing queue: {QueueName}", queueName);
-            return Result<bool, Failure>.Fail(new Failure(ex.Message, "CLEAR_QUEUE_ERROR"));
+            return Result<bool, Failure>.Fail(new Failure("CLEAR_QUEUE_ERROR", ex.Message) { Exception = ex });
         }
     }
 

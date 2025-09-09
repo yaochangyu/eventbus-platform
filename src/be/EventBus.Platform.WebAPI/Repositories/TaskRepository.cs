@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using EventBus.Infrastructure.Caching;
 using EventBus.Infrastructure.TraceContext;
+using EventBus.Infrastructure.Models;
 using EventBus.Platform.WebAPI.Models;
 
 namespace EventBus.Platform.WebAPI.Repositories;
@@ -19,19 +20,19 @@ public class TaskRepository(
         try
         {
             var traceContext = traceContextGetter.GetContext();
-            
+
             if (_tasks.ContainsKey(taskEntity.Id))
             {
                 return Result<TaskEntity, Failure>.Fail(new Failure("Task with this ID already exists", "DuplicateId"));
             }
 
             _tasks.TryAdd(taskEntity.Id, taskEntity);
-            
+
             var cacheKey = $"{CacheKeyPrefix}{taskEntity.Id}";
             await cacheService.SetAsync(cacheKey, taskEntity, CacheDuration, cancellationToken)
                 .ConfigureAwait(false);
 
-            logger.LogInformation("Successfully created task: {TaskId} - TraceId: {TraceId}", 
+            logger.LogInformation("Successfully created task: {TaskId} - TraceId: {TraceId}",
                 taskEntity.Id, traceContext?.TraceId);
 
             return Result<TaskEntity, Failure>.Ok(taskEntity);
@@ -40,12 +41,15 @@ public class TaskRepository(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to create task - TraceId: {TraceId}", traceContext?.TraceId);
-            return Result<TaskEntity, Failure>.Fail(new Failure("Failed to create task", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to create task") { Exception = ex, TraceId = traceId });
         }
     }
 
     public async Task<Result<TaskEntity, Failure>> GetByIdAsync(string id, CancellationToken cancellationToken = default)
     {
+        var traceContext = traceContextGetter.GetContext();
+
         try
         {
             var cacheKey = $"{CacheKeyPrefix}{id}";
@@ -68,17 +72,17 @@ public class TaskRepository(
         }
         catch (Exception ex)
         {
-            var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get task by ID: {Id} - TraceId: {TraceId}", id, traceContext?.TraceId);
-            return Result<TaskEntity, Failure>.Fail(new Failure("Failed to retrieve task", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to retrieve task") { Exception = ex, TraceId = traceId });
         }
     }
 
     public async Task<Result<TaskEntity, Failure>> UpdateAsync(TaskEntity taskEntity, CancellationToken cancellationToken = default)
     {
+        var traceContext = traceContextGetter.GetContext();
         try
         {
-            var traceContext = traceContextGetter.GetContext();
 
             if (!_tasks.ContainsKey(taskEntity.Id))
             {
@@ -92,24 +96,24 @@ public class TaskRepository(
             await cacheService.SetAsync(cacheKey, taskEntity, CacheDuration, cancellationToken)
                 .ConfigureAwait(false);
 
-            logger.LogInformation("Successfully updated task: {TaskId} - TraceId: {TraceId}", 
+            logger.LogInformation("Successfully updated task: {TaskId} - TraceId: {TraceId}",
                 taskEntity.Id, traceContext?.TraceId);
 
             return Result<TaskEntity, Failure>.Ok(taskEntity);
         }
         catch (Exception ex)
         {
-            var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to update task: {TaskId} - TraceId: {TraceId}", taskEntity.Id, traceContext?.TraceId);
-            return Result<TaskEntity, Failure>.Fail(new Failure("Failed to update task", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to update task") { Exception = ex, TraceId = traceId });
         }
     }
 
     public async Task<Result<bool, Failure>> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
+        var traceContext = traceContextGetter.GetContext();
         try
         {
-            var traceContext = traceContextGetter.GetContext();
 
             if (!_tasks.TryRemove(id, out _))
             {
@@ -119,21 +123,23 @@ public class TaskRepository(
             var cacheKey = $"{CacheKeyPrefix}{id}";
             await cacheService.RemoveAsync(cacheKey, cancellationToken).ConfigureAwait(false);
 
-            logger.LogInformation("Successfully deleted task: {TaskId} - TraceId: {TraceId}", 
+            logger.LogInformation("Successfully deleted task: {TaskId} - TraceId: {TraceId}",
                 id, traceContext?.TraceId);
 
             return Result<bool, Failure>.Ok(true);
         }
         catch (Exception ex)
         {
-            var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to delete task: {TaskId} - TraceId: {TraceId}", id, traceContext?.TraceId);
-            return Result<bool, Failure>.Fail(new Failure("Failed to delete task", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<bool, Failure>.Fail(new Failure("InternalError", "Failed to delete task") { Exception = ex, TraceId = traceId });
         }
     }
 
     public async Task<Result<List<TaskEntity>, Failure>> GetByEventIdAsync(string eventId, CancellationToken cancellationToken = default)
     {
+        var traceContext = traceContextGetter.GetContext();
+
         try
         {
             await Task.CompletedTask;
@@ -146,14 +152,16 @@ public class TaskRepository(
         }
         catch (Exception ex)
         {
-            var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get tasks by event ID: {EventId} - TraceId: {TraceId}", eventId, traceContext?.TraceId);
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve tasks by event ID", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve tasks by event ID") { Exception = ex, TraceId = traceId });
         }
     }
 
     public async Task<Result<List<TaskEntity>, Failure>> GetByStatusAsync(string status, int limit = 100, CancellationToken cancellationToken = default)
     {
+        var traceContext = traceContextGetter.GetContext();
+
         try
         {
             await Task.CompletedTask;
@@ -167,14 +175,16 @@ public class TaskRepository(
         }
         catch (Exception ex)
         {
-            var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get tasks by status: {Status} - TraceId: {TraceId}", status, traceContext?.TraceId);
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve tasks by status", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve tasks by status") { Exception = ex, TraceId = traceId });
         }
     }
 
     public async Task<Result<List<TaskEntity>, Failure>> GetPendingTasksAsync(int limit = 100, CancellationToken cancellationToken = default)
     {
+        var traceContext = traceContextGetter.GetContext();
+
         try
         {
             await Task.CompletedTask;
@@ -188,9 +198,9 @@ public class TaskRepository(
         }
         catch (Exception ex)
         {
-            var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get pending tasks - TraceId: {TraceId}", traceContext?.TraceId);
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve pending tasks", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve pending tasks") { Exception = ex, TraceId = traceId });
         }
     }
 }

@@ -1,5 +1,5 @@
 using EventBus.Platform.WebAPI.Handlers;
-using EventBus.Platform.WebAPI.Models;
+using EventBus.Infrastructure.Models;
 using EventBus.Infrastructure.Queue;
 using Microsoft.AspNetCore.Mvc;
 

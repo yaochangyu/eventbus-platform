@@ -1,7 +1,7 @@
 using EventBus.Infrastructure.Queue;
 using EventBus.Infrastructure.TraceContext;
 using EventBus.Platform.WebAPI.Handlers;
-using EventBus.Platform.WebAPI.Models;
+using EventBus.Infrastructure.Models;
 using EventBus.Infrastructure.Models;
 using Microsoft.AspNetCore.Mvc;
 

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace EventBus.Infrastructure.Models;
 
 public record Result<TSuccess, TFailure>
@@ -12,5 +14,3 @@ public record Result<TSuccess, TFailure>
     public static Result<TSuccess, TFailure> Fail(TFailure failure) =>
         new() { IsSuccess = false, Failure = failure };
 }
-
-public record Failure(string Message, string? Code = null);

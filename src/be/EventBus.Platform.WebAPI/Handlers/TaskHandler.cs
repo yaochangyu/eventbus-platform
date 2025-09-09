@@ -1,8 +1,9 @@
 using EventBus.Infrastructure.Queue;
 using EventBus.Infrastructure.TraceContext;
-using EventBus.Platform.WebAPI.Models;
+using EventBus.Infrastructure.Models;
 using EventBus.Platform.WebAPI.Repositories;
 using System.Text.Json;
+using EventBus.Platform.WebAPI.Models;
 
 namespace EventBus.Platform.WebAPI.Handlers;
 
@@ -46,10 +47,11 @@ public class TaskHandler(
         catch (Exception ex)
         {
             logger.LogError(ex, "Exception in CreateTaskAsync - TraceId: {TraceId}", traceContext?.TraceId);
-            return Result<TaskEntity, Failure>.Fail(new Failure("Failed to create task", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to create task") { Exception = ex, TraceId = traceId });
         }
     }
-    
+
     public async Task<Result<TaskEntity, Failure>> GetTaskByIdAsync(string id,
         CancellationToken cancellationToken = default)
     {
@@ -69,7 +71,8 @@ public class TaskHandler(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Exception in GetTaskByIdAsync: {TaskId} - TraceId: {TraceId}", id,
                 traceContext?.TraceId);
-            return Result<TaskEntity, Failure>.Fail(new Failure("Failed to retrieve task", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to retrieve task") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -163,12 +166,15 @@ public class TaskHandler(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Exception in UpdateTaskStatusAsync: {TaskId} - TraceId: {TraceId}", id,
                 traceContext?.TraceId);
-            return Result<TaskEntity, Failure>.Fail(new Failure("Failed to update task status", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to update task status") { Exception = ex, TraceId = traceId });
         }
     }
 
     public async Task<Result<bool, Failure>> ExecuteTaskAsync(string id, CancellationToken cancellationToken = default)
     {
+        var traceContext = traceContextGetter.GetContext();
+
         try
         {
             var getResult = await taskRepository.GetByIdAsync(id, cancellationToken);
@@ -195,7 +201,6 @@ public class TaskHandler(
         }
         catch (Exception ex)
         {
-            var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Exception in ExecuteTaskAsync: {TaskId} - TraceId: {TraceId}", id,
                 traceContext?.TraceId);
 
@@ -209,7 +214,8 @@ public class TaskHandler(
                 // Ignore update errors during exception handling
             }
 
-            return Result<bool, Failure>.Fail(new Failure("Failed to execute task", "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<bool, Failure>.Fail(new Failure("InternalError", "Failed to execute task") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -242,7 +248,9 @@ public class TaskHandler(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to get scheduled tasks ready for execution");
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("SCHEDULED_TASK_QUERY_FAILED", ex.Message));
+            var traceContext = traceContextGetter.GetContext();
+            var traceId = traceContext?.TraceId;
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure("SCHEDULED_TASK_QUERY_FAILED", ex.Message) { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -309,7 +317,9 @@ public class TaskHandler(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to update scheduled task {TaskId} status", id);
-            return Result<TaskEntity, Failure>.Fail(new Failure("SCHEDULED_TASK_UPDATE_FAILED", ex.Message));
+            var traceContext = traceContextGetter.GetContext();
+            var traceId = traceContext?.TraceId;
+            return Result<TaskEntity, Failure>.Fail(new Failure("SCHEDULED_TASK_UPDATE_FAILED", ex.Message) { Exception = ex, TraceId = traceId });
         }
     }
 }
