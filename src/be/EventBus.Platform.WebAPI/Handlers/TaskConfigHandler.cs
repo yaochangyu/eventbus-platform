@@ -23,7 +23,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         {
             if (_taskConfigs.ContainsKey(request.TaskName))
             {
-                return Result<TaskConfig, Failure>.Fail(new Failure($"Task configuration already exists: {request.TaskName}", "ConfigExists"));
+                return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.ConfigExists.ToString(), $"Task configuration already exists: {request.TaskName}"));
             }
 
             var taskConfig = new TaskConfig
@@ -54,7 +54,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create task configuration: {TaskName}", request.TaskName);
-            return Result<TaskConfig, Failure>.Fail(new Failure("CreateConfigFailed", ex.Message) { Exception = ex });
+            return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.CreateConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
 
@@ -97,7 +97,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create task configuration (generic): {TaskName}", request.TaskName);
-            return Result<TaskConfig, Failure>.Fail(new Failure("CreateConfigFailed", ex.Message) { Exception = ex });
+            return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.CreateConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
 
@@ -107,7 +107,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         {
             if (!_taskConfigs.TryGetValue(taskName, out var taskConfig))
             {
-                return Result<TaskConfig, Failure>.Fail(new Failure($"Task configuration not found: {taskName}", "NotFound"));
+                return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.NotFound.ToString(), $"Task configuration not found: {taskName}"));
             }
 
             return Result<TaskConfig, Failure>.Ok(taskConfig);
@@ -115,7 +115,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get task configuration: {TaskName}", taskName);
-            return Result<TaskConfig, Failure>.Fail(new Failure("GetConfigFailed", ex.Message) { Exception = ex });
+            return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.GetConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
 
@@ -125,7 +125,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         {
             if (!_taskConfigs.TryGetValue(taskName, out var existingConfig))
             {
-                return Result<TaskConfig, Failure>.Fail(new Failure($"Task configuration not found: {taskName}", "NotFound"));
+                return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.NotFound.ToString(), $"Task configuration not found: {taskName}"));
             }
 
             var updatedConfig = existingConfig with
@@ -151,7 +151,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update task configuration: {TaskName}", taskName);
-            return Result<TaskConfig, Failure>.Fail(new Failure("UpdateConfigFailed", ex.Message) { Exception = ex });
+            return Result<TaskConfig, Failure>.Fail(new Failure(FailureCode.UpdateConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
 
@@ -173,7 +173,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to delete task configuration: {TaskName}", taskName);
-            return Result<bool, Failure>.Fail(new Failure("DeleteConfigFailed", ex.Message) { Exception = ex });
+            return Result<bool, Failure>.Fail(new Failure(FailureCode.DeleteConfigFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
 
@@ -190,7 +190,7 @@ public class TaskConfigHandler : ITaskConfigHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get all task configurations");
-            return Result<List<TaskConfig>, Failure>.Fail(new Failure("GetAllConfigsFailed", ex.Message) { Exception = ex });
+            return Result<List<TaskConfig>, Failure>.Fail(new Failure(FailureCode.GetAllConfigsFailed.ToString(), ex.Message) { Exception = ex });
         }
     }
 }

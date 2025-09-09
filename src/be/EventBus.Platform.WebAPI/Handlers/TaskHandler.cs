@@ -48,7 +48,7 @@ public class TaskHandler(
         {
             logger.LogError(ex, "Exception in CreateTaskAsync - TraceId: {TraceId}", traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to create task") { Exception = ex, TraceId = traceId });
+            return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to create task") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -72,7 +72,7 @@ public class TaskHandler(
             logger.LogError(ex, "Exception in GetTaskByIdAsync: {TaskId} - TraceId: {TraceId}", id,
                 traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to retrieve task") { Exception = ex, TraceId = traceId });
+            return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve task") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -88,8 +88,8 @@ public class TaskHandler(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Exception in GetTasksByEventIdAsync: {EventId} - TraceId: {TraceId}", eventId,
                 traceContext?.TraceId);
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve tasks by event ID",
-                "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve tasks by event ID") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -105,8 +105,8 @@ public class TaskHandler(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Exception in GetTasksByStatusAsync: {Status} - TraceId: {TraceId}", status,
                 traceContext?.TraceId);
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve tasks by status",
-                "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve tasks by status") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -121,8 +121,8 @@ public class TaskHandler(
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Exception in GetPendingTasksAsync - TraceId: {TraceId}", traceContext?.TraceId);
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("Failed to retrieve pending tasks",
-                "InternalError"));
+            var traceId = traceContext?.TraceId;
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve pending tasks") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -167,7 +167,7 @@ public class TaskHandler(
             logger.LogError(ex, "Exception in UpdateTaskStatusAsync: {TaskId} - TraceId: {TraceId}", id,
                 traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to update task status") { Exception = ex, TraceId = traceId });
+            return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to update task status") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -215,7 +215,7 @@ public class TaskHandler(
             }
 
             var traceId = traceContext?.TraceId;
-            return Result<bool, Failure>.Fail(new Failure("InternalError", "Failed to execute task") { Exception = ex, TraceId = traceId });
+            return Result<bool, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to execute task") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -250,7 +250,7 @@ public class TaskHandler(
             logger.LogError(ex, "Failed to get scheduled tasks ready for execution");
             var traceContext = traceContextGetter.GetContext();
             var traceId = traceContext?.TraceId;
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("SCHEDULED_TASK_QUERY_FAILED", ex.Message) { Exception = ex, TraceId = traceId });
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure(FailureCode.ScheduledTaskQueryFailed.ToString(), ex.Message) { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -319,7 +319,7 @@ public class TaskHandler(
             logger.LogError(ex, "Failed to update scheduled task {TaskId} status", id);
             var traceContext = traceContextGetter.GetContext();
             var traceId = traceContext?.TraceId;
-            return Result<TaskEntity, Failure>.Fail(new Failure("SCHEDULED_TASK_UPDATE_FAILED", ex.Message) { Exception = ex, TraceId = traceId });
+            return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.ScheduledTaskUpdateFailed.ToString(), ex.Message) { Exception = ex, TraceId = traceId });
         }
     }
 }

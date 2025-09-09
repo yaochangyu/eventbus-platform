@@ -2,14 +2,30 @@
 {
     public enum FailureCode
     {
+        Unknown,
         Unauthorized,
-        DbError,
-        DuplicateEmail,
-        DbConcurrency,
+        NotFound,
         ValidationError,
         InvalidOperation,
+        DuplicateId,
+        DuplicateEmail,
+        DbError,
+        DbConcurrency,
         Timeout,
         InternalServerError,
-        Unknown
+        ConfigExists,
+        CreateConfigFailed,
+        GetConfigFailed,
+        UpdateConfigFailed,
+        DeleteConfigFailed,
+        GetAllConfigsFailed,
+        EnqueueError,
+        DequeueError,
+        TryDequeueError,
+        PeekError,
+        ClearError,
+        ClearQueueError,
+        ScheduledTaskQueryFailed,
+        ScheduledTaskUpdateFailed
     }
 }

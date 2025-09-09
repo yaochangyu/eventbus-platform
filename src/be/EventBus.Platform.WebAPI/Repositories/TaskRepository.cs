@@ -23,7 +23,7 @@ public class TaskRepository(
 
             if (_tasks.ContainsKey(taskEntity.Id))
             {
-                return Result<TaskEntity, Failure>.Fail(new Failure("Task with this ID already exists", "DuplicateId"));
+                return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.DuplicateId.ToString(), "Task with this ID already exists"));
             }
 
             _tasks.TryAdd(taskEntity.Id, taskEntity);
@@ -42,7 +42,7 @@ public class TaskRepository(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to create task - TraceId: {TraceId}", traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to create task") { Exception = ex, TraceId = traceId });
+            return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to create task") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -68,13 +68,13 @@ public class TaskRepository(
                 return Result<TaskEntity, Failure>.Ok(taskEntity);
             }
 
-            return Result<TaskEntity, Failure>.Fail(new Failure("Task not found", "NotFound"));
+            return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.NotFound.ToString(), "Task not found"));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to get task by ID: {Id} - TraceId: {TraceId}", id, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to retrieve task") { Exception = ex, TraceId = traceId });
+            return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve task") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -86,7 +86,7 @@ public class TaskRepository(
 
             if (!_tasks.ContainsKey(taskEntity.Id))
             {
-                return Result<TaskEntity, Failure>.Fail(new Failure("Task not found", "NotFound"));
+                return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.NotFound.ToString(), "Task not found"));
             }
 
             _tasks.TryUpdate(taskEntity.Id, taskEntity, _tasks[taskEntity.Id]);
@@ -105,7 +105,7 @@ public class TaskRepository(
         {
             logger.LogError(ex, "Failed to update task: {TaskId} - TraceId: {TraceId}", taskEntity.Id, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<TaskEntity, Failure>.Fail(new Failure("InternalError", "Failed to update task") { Exception = ex, TraceId = traceId });
+            return Result<TaskEntity, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to update task") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -132,7 +132,7 @@ public class TaskRepository(
         {
             logger.LogError(ex, "Failed to delete task: {TaskId} - TraceId: {TraceId}", id, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<bool, Failure>.Fail(new Failure("InternalError", "Failed to delete task") { Exception = ex, TraceId = traceId });
+            return Result<bool, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to delete task") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -154,7 +154,7 @@ public class TaskRepository(
         {
             logger.LogError(ex, "Failed to get tasks by event ID: {EventId} - TraceId: {TraceId}", eventId, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve tasks by event ID") { Exception = ex, TraceId = traceId });
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve tasks by event ID") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -177,7 +177,7 @@ public class TaskRepository(
         {
             logger.LogError(ex, "Failed to get tasks by status: {Status} - TraceId: {TraceId}", status, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve tasks by status") { Exception = ex, TraceId = traceId });
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve tasks by status") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -200,7 +200,7 @@ public class TaskRepository(
         {
             logger.LogError(ex, "Failed to get pending tasks - TraceId: {TraceId}", traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<List<TaskEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve pending tasks") { Exception = ex, TraceId = traceId });
+            return Result<List<TaskEntity>, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve pending tasks") { Exception = ex, TraceId = traceId });
         }
     }
 }

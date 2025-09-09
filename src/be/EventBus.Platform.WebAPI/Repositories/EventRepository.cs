@@ -23,7 +23,7 @@ public class EventRepository(
             
             if (_events.ContainsKey(eventEntity.Id))
             {
-                return Result<EventEntity, Failure>.Fail(new Failure("Event with this ID already exists", "DuplicateId"));
+                return Result<EventEntity, Failure>.Fail(new Failure(FailureCode.DuplicateId.ToString(), "Event with this ID already exists"));
             }
 
             _events.TryAdd(eventEntity.Id, eventEntity);
@@ -42,7 +42,7 @@ public class EventRepository(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to create event - TraceId: {TraceId}", traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<EventEntity, Failure>.Fail(new Failure("InternalError", "Failed to create event") { Exception = ex, TraceId = traceId });
+            return Result<EventEntity, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to create event") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -66,14 +66,14 @@ public class EventRepository(
                 return Result<EventEntity, Failure>.Ok(eventEntity);
             }
 
-            return Result<EventEntity, Failure>.Fail(new Failure("Event not found", "NotFound"));
+            return Result<EventEntity, Failure>.Fail(new Failure(FailureCode.NotFound.ToString(), "Event not found"));
         }
         catch (Exception ex)
         {
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get event by ID: {Id} - TraceId: {TraceId}", id, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<EventEntity, Failure>.Fail(new Failure("InternalError", "Failed to retrieve event") { Exception = ex, TraceId = traceId });
+            return Result<EventEntity, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve event") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -85,7 +85,7 @@ public class EventRepository(
 
             if (!_events.ContainsKey(eventEntity.Id))
             {
-                return Result<EventEntity, Failure>.Fail(new Failure("Event not found", "NotFound"));
+                return Result<EventEntity, Failure>.Fail(new Failure(FailureCode.NotFound.ToString(), "Event not found"));
             }
 
             var updatedEntity = eventEntity with { UpdatedAt = DateTime.UtcNow };
@@ -106,7 +106,7 @@ public class EventRepository(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to update event: {EventId} - TraceId: {TraceId}", eventEntity.Id, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<EventEntity, Failure>.Fail(new Failure("InternalError", "Failed to update event") { Exception = ex, TraceId = traceId });
+            return Result<EventEntity, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to update event") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -134,7 +134,7 @@ public class EventRepository(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to delete event: {EventId} - TraceId: {TraceId}", id, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<bool, Failure>.Fail(new Failure("InternalError", "Failed to delete event") { Exception = ex, TraceId = traceId });
+            return Result<bool, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to delete event") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -156,7 +156,7 @@ public class EventRepository(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get events by type: {EventType} - TraceId: {TraceId}", eventType, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<List<EventEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve events by type") { Exception = ex, TraceId = traceId });
+            return Result<List<EventEntity>, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve events by type") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -178,7 +178,7 @@ public class EventRepository(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get events by status: {Status} - TraceId: {TraceId}", status, traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<List<EventEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve events by status") { Exception = ex, TraceId = traceId });
+            return Result<List<EventEntity>, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve events by status") { Exception = ex, TraceId = traceId });
         }
     }
 
@@ -201,7 +201,7 @@ public class EventRepository(
             var traceContext = traceContextGetter.GetContext();
             logger.LogError(ex, "Failed to get pending events - TraceId: {TraceId}", traceContext?.TraceId);
             var traceId = traceContext?.TraceId;
-            return Result<List<EventEntity>, Failure>.Fail(new Failure("InternalError", "Failed to retrieve pending events") { Exception = ex, TraceId = traceId });
+            return Result<List<EventEntity>, Failure>.Fail(new Failure(FailureCode.InternalServerError.ToString(), "Failed to retrieve pending events") { Exception = ex, TraceId = traceId });
         }
     }
 }
